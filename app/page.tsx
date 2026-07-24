@@ -1,23 +1,6 @@
 const categories = ['Gel Blasters', 'Accessories', 'Magazines', 'Batteries']
 
-const placeholders = [0, 1, 2]
-
-function ProductPlaceholder() {
-  return (
-    <article className="product-card" aria-label="Product placeholder">
-      <div className="product-placeholder-image">Product image placeholder</div>
-      <div className="product-card-body">
-        <p className="placeholder-label">Placeholder</p>
-        <h3>Product name</h3>
-        <dl className="product-meta">
-          <div><dt>Price</dt><dd>Coming soon</dd></div>
-          <div><dt>Availability</dt><dd>Coming soon</dd></div>
-        </dl>
-        <button className="outline-button" type="button" disabled>View product</button>
-      </div>
-    </article>
-  )
-}
+import { PublicProducts } from '../components/PublicProducts'
 
 export default function Home() {
   return (
@@ -67,8 +50,8 @@ export default function Home() {
         </section>
 
         <section className="section section-arrivals" id="shop">
-          <div className="section-heading section-heading-row"><div><p className="eyebrow">Product catalogue</p><h2>New arrivals</h2></div><span className="coming-soon">Placeholder data</span></div>
-          <div className="product-grid">{placeholders.map((item) => <ProductPlaceholder key={item} />)}</div>
+          <div className="section-heading"><p className="eyebrow">Product catalogue</p><h2>New arrivals</h2></div>
+          <PublicProducts />
         </section>
 
         <section className="section about-section" id="about">
