@@ -14,6 +14,8 @@ const statusOptions = [
   { value: 'preorder', label: 'Pre-order' },
 ]
 
+const categoryOptions = ['Gel Blaster', 'Pistol', 'Parts', 'Accessories', 'Batteries and Chargers', 'Tactical Gear', 'Other']
+
 function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
@@ -100,7 +102,7 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={styles.field}><label htmlFor="product-name">Product Name</label><input id="product-name" required value={values.name} onChange={(event) => handleNameChange(event.target.value)} placeholder="Enter product name" /></div>
           <div className={styles.field}><label htmlFor="product-slug">Slug</label><input id="product-slug" required value={values.slug} onChange={(event) => { setSlugEdited(true); update('slug', event.target.value) }} placeholder="product-slug" /><span className={styles.slugHint}>Generated from the name until you edit it.</span></div>
           <div className={styles.field}><label htmlFor="brand">Brand</label><input id="brand" value={values.brand} onChange={(event) => update('brand', event.target.value)} placeholder="Brand name" /></div>
-          <div className={styles.field}><label htmlFor="category">Category</label><input id="category" required value={values.category} onChange={(event) => update('category', event.target.value)} placeholder="Category" /></div>
+          <div className={styles.field}><label htmlFor="category">Category</label><select id="category" required value={values.category} onChange={(event) => update('category', event.target.value)}><option value="" disabled>Select a category</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
           <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={values.price} onChange={(event) => update('price', event.target.value)} /></div>
           <div className={styles.field}><label htmlFor="stock">Stock</label><input id="stock" required min="0" step="1" type="number" value={values.stock} onChange={(event) => update('stock', event.target.value)} /></div>
           <div className={styles.field}><label htmlFor="status">Status</label><select id="status" value={values.status} onChange={(event) => update('status', event.target.value)}>{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></div>
