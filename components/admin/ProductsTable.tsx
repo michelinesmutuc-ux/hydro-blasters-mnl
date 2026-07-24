@@ -14,6 +14,7 @@ type Product = {
   stock: number
   status: 'draft' | 'in_stock' | 'out_of_stock' | 'preorder'
   featured: boolean
+  is_active: boolean
   image_urls: string[]
 }
 
@@ -25,7 +26,7 @@ type ProductForDuplicate = Product & {
   is_active: boolean
 }
 
-const columns = ['Thumbnail', 'Product Name', 'Brand', 'Category', 'Price', 'Stock', 'Status', 'Featured', 'Actions']
+const columns = ['Thumbnail', 'Product Name', 'Brand', 'Category', 'Price', 'Stock', 'Status', 'Active', 'Featured', 'Actions']
 
 function statusLabel(status: Product['status']) {
   return status.replaceAll('_', ' ')
@@ -37,10 +38,11 @@ export function ProductsTable() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [workingId, setWorkingId] = useState<string | null>(null)
+  const [workingToggle, setWorkingToggle] = useState<{ id: string; field: 'is_active' | 'featured' } | null>(null)
 
   const loadProducts = useCallback(async () => {
     setLoading(true)
-    const { data, error: queryError } = await supabase.from('products').select('id,name,brand,category,price,stock,status,featured,image_urls').order('created_at', { ascending: false })
+    const { data, error: queryError } = await supabase.from('products').select('id,name,brand,category,price,stock,status,featured,is_active,image_urls').order('created_at', { ascending: false })
     if (queryError) setError(queryError.message)
     else {
       setProducts((data ?? []) as Product[])
@@ -125,6 +127,25 @@ export function ProductsTable() {
     }
   }
 
+  async function toggleProductField(product: Product, field: 'is_active' | 'featured') {
+    const previousValue = product[field]
+    const nextValue = !previousValue
+    setWorkingToggle({ id: product.id, field })
+    setError(null)
+    setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id ? { ...currentProduct, [field]: nextValue } : currentProduct))
+
+    const { error: updateError } = await supabase
+      .from('products')
+      .update({ [field]: nextValue, updated_at: new Date().toISOString() })
+      .eq('id', product.id)
+
+    if (updateError) {
+      setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id ? { ...currentProduct, [field]: previousValue } : currentProduct))
+      setError(`Could not update ${field === 'is_active' ? 'Active' : 'Featured'} for ${product.name}. ${updateError.message}`)
+    }
+    setWorkingToggle(null)
+  }
+
   return (
     <section className={styles.panel}>
       <div className={styles.panelHeader}><h2>All products</h2><span>{loading ? 'Loading products…' : `${products.length} product${products.length === 1 ? '' : 's'}`}</span></div>
@@ -133,7 +154,9 @@ export function ProductsTable() {
       {!loading && !error && products.length === 0 && <div className={styles.emptyState}>No products found yet.</div>}
       {!loading && !error && products.length > 0 && <div className={styles.tableWrap}><table className={styles.table}><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{products.map((product) => {
         const isWorking = workingId === product.id
-        return <tr key={product.id}><td>{product.image_urls[0] ? <img className={styles.tableImage} src={product.image_urls[0]} alt="" /> : <div className={styles.thumbnail}>Image</div>}</td><td>{product.name}</td><td className={styles.placeholderText}>{product.brand ?? '—'}</td><td>{product.category}</td><td>{product.price}</td><td>{product.stock}</td><td><span className={styles.status}>{statusLabel(product.status)}</span></td><td>{product.featured ? 'Yes' : 'No'}</td><td><div className={styles.tableActions}><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Edit</a><button className={styles.tableAction} type="button" disabled={isWorking} onClick={() => duplicateProduct(product)}>{isWorking ? 'Working…' : 'Duplicate'}</button><button className={`${styles.tableAction} ${styles.deleteAction}`} type="button" disabled={isWorking} onClick={() => deleteProduct(product)}>{isWorking ? 'Working…' : 'Delete'}</button></div></td></tr>
+        const activeIsUpdating = workingToggle?.id === product.id && workingToggle.field === 'is_active'
+        const featuredIsUpdating = workingToggle?.id === product.id && workingToggle.field === 'featured'
+        return <tr key={product.id}><td>{product.image_urls[0] ? <img className={styles.tableImage} src={product.image_urls[0]} alt="" /> : <div className={styles.thumbnail}>Image</div>}</td><td>{product.name}</td><td className={styles.placeholderText}>{product.brand ?? '—'}</td><td>{product.category}</td><td>{product.price}</td><td>{product.stock}</td><td><span className={styles.status}>{statusLabel(product.status)}</span></td><td><button type="button" className={`${styles.quickToggle} ${product.is_active ? styles.quickToggleOn : ''}`} aria-pressed={product.is_active} aria-label={`Set ${product.name} ${product.is_active ? 'inactive' : 'active'}`} disabled={isWorking || activeIsUpdating} onClick={() => toggleProductField(product, 'is_active')}><span aria-hidden="true" />{activeIsUpdating ? 'Saving…' : product.is_active ? 'Active' : 'Inactive'}</button></td><td><button type="button" className={`${styles.quickToggle} ${product.featured ? styles.quickToggleOn : ''}`} aria-pressed={product.featured} aria-label={`${product.featured ? 'Remove' : 'Set'} ${product.name} as featured`} disabled={isWorking || featuredIsUpdating} onClick={() => toggleProductField(product, 'featured')}><span aria-hidden="true" />{featuredIsUpdating ? 'Saving…' : product.featured ? 'Featured' : 'Not featured'}</button></td><td><div className={styles.tableActions}><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Edit</a><button className={styles.tableAction} type="button" disabled={isWorking} onClick={() => duplicateProduct(product)}>{isWorking ? 'Working…' : 'Duplicate'}</button><button className={`${styles.tableAction} ${styles.deleteAction}`} type="button" disabled={isWorking} onClick={() => deleteProduct(product)}>{isWorking ? 'Working…' : 'Delete'}</button></div></td></tr>
       })}</tbody></table></div>}
     </section>
   )
