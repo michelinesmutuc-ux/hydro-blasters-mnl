@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
-import { uploadProductImages } from '../../lib/supabase/product-images'
+import { deleteProductImages, uploadProductImages } from '../../lib/supabase/product-images'
 import { ProductImageUploader } from './ProductImageUploader'
 import styles from './admin.module.css'
 
@@ -34,6 +34,7 @@ export function ProductForm({ mode }: ProductFormProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>([])
+  const [loadedImageUrls, setLoadedImageUrls] = useState<string[]>([])
   const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number } | null>(null)
   const [productId, setProductId] = useState<string | null>(null)
   const [isLoadingProduct, setIsLoadingProduct] = useState(mode === 'edit')
@@ -71,6 +72,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       })
       setSlugEdited(true)
       setExistingImageUrls(data.image_urls ?? [])
+      setLoadedImageUrls(data.image_urls ?? [])
       setIsLoadingProduct(false)
     }
     loadProduct()
@@ -161,13 +163,15 @@ export function ProductForm({ mode }: ProductFormProps) {
       }
 
       const editPayload = { ...productPayload, image_urls: [...existingImageUrls, ...uploadedImageUrls] }
+      const removedImageUrls = loadedImageUrls.filter((url) => !existingImageUrls.includes(url))
       console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', editPayload.image_urls)
-      const { data, error: updateError } = await supabase.from('products').update(editPayload).eq('id', productId as string).select('id,image_urls').single()
+      const { data, error: updateError } = await supabase.from('products').update({ ...editPayload, updated_at: new Date().toISOString() }).eq('id', productId as string).select('id,image_urls').single()
       if (updateError) throw updateError
       const savedUrls: string[] = Array.isArray(data?.image_urls) ? data.image_urls : []
       if (editPayload.image_urls.length > 0 && (savedUrls.length === 0 || savedUrls.length !== editPayload.image_urls.length || savedUrls.some((url, index) => url !== editPayload.image_urls[index]))) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
+      await deleteProductImages(removedImageUrls)
       router.push('/admin/products?updated=1')
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'The product could not be saved. Please try again.')

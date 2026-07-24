@@ -31,5 +31,6 @@
 .removeImageButton:disabled { opacity:.55; cursor:wait; }
 .tableAction { color:#72eaff; font-size:10px; font-weight:800; letter-spacing:.08em; text-decoration:none; text-transform:uppercase; }
 .tableAction:hover { color:#9d75ff; }
+.tableActions { display:flex; flex-wrap:wrap; gap:10px; }.tableActions button { padding:0; border:0; background:transparent; cursor:pointer; }.tableActions button:disabled { color:#a09fac; cursor:wait; }.deleteAction { color:#fa55c7; }.deleteAction:hover { color:#ff85d8; }
 
 @media (min-width:700px) { .previewGrid { grid-template-columns:repeat(4,minmax(0,1fr)); } }

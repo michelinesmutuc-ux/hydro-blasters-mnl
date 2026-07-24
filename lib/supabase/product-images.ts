@@ -95,3 +95,23 @@ export async function uploadProductImages({ files, slug, onProgress }: UploadPro
   console.log('[Hydro Blasters MNL] Generated public URLs:', urls)
   return urls
 }
+
+function storagePathFromPublicUrl(url: string) {
+  try {
+    const parsed = new URL(url)
+    const marker = `/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/`
+    const markerIndex = parsed.pathname.indexOf(marker)
+    if (markerIndex === -1) return null
+    return decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length)) || null
+  } catch {
+    return null
+  }
+}
+
+export async function deleteProductImages(imageUrls: string[]) {
+  const paths = imageUrls.map(storagePathFromPublicUrl).filter((path): path is string => Boolean(path))
+  if (paths.length === 0) return
+
+  const { error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(paths)
+  if (error) throw new Error(`The product row was updated, but its stored images could not be removed. ${error.message}`)
+}
