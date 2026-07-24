@@ -11,15 +11,15 @@ type Product = {
 }
 
 const featured: Product[] = [
-  { name: 'Nova Drift M4', details: 'Electric · 7–8 mm gel balls', price: '₱4,995', tag: 'Best seller', tone: 'blue' },
-  { name: 'Arc Pulse MP7', details: 'Electric · Compact platform', price: '₱3,795', tag: 'New drop', tone: 'purple' },
-  { name: 'Vanta Strike AK', details: 'Electric · Full-size body', price: '₱5,995', tag: 'Collector pick', tone: 'pink' },
+  { name: 'Product name', details: 'Product details', price: 'Price', tag: 'Coming soon', tone: 'blue' },
+  { name: 'Product name', details: 'Product details', price: 'Price', tag: 'Coming soon', tone: 'purple' },
+  { name: 'Product name', details: 'Product details', price: 'Price', tag: 'Coming soon', tone: 'pink' },
 ]
 
 const arrivals: Product[] = [
-  { name: 'Ion Mini Vector', details: 'Electric · 7–8 mm gel balls', price: '₱4,495', tag: 'Limited', tone: 'blue' },
-  { name: 'Orbit Pro P90', details: 'Electric · Compact platform', price: '₱4,995', tag: 'Restocked', tone: 'purple' },
-  { name: 'Flux Cobalt G36', details: 'Electric · Full-size body', price: '₱5,495', tag: 'New color', tone: 'pink' },
+  { name: 'Product name', details: 'Product details', price: 'Price', tag: 'Coming soon', tone: 'blue' },
+  { name: 'Product name', details: 'Product details', price: 'Price', tag: 'Coming soon', tone: 'purple' },
+  { name: 'Product name', details: 'Product details', price: 'Price', tag: 'Coming soon', tone: 'pink' },
 ]
 
 function ProductCard({ product, onAdd }: { product: Product; onAdd: () => void }) {
@@ -57,7 +57,7 @@ export default function Home() {
 
   return (
     <div className="shell">
-      <div className="notice"><i /> Free Metro Manila delivery on orders over ₱3,000</div>
+      <div className="notice"><i /> Store information coming soon</div>
       <header>
         <a className="brand" href="#top" aria-label="Hydro Blasters MNL home"><span className="brand-mark"><b>H</b></span><span>HYDRO<br />BLASTERS <span className="brand-accent">MNL</span></span></a>
         <nav><a href="#shop">Shop</a><a href="#categories">Categories</a><a href="#arrivals">New arrivals</a></nav>
@@ -70,30 +70,30 @@ export default function Home() {
       <main id="top">
         <section className="hero" aria-label="Gel blaster hero">
           <div className="grid" />
-          <div className="hero-stat"><strong>7–8 MM</strong>Gel ball compatible</div>
+          <div className="hero-stat"><strong>COMING SOON</strong>Product details</div>
           <p className="kicker">Built for the next round</p>
           <h1>Play in <em>full color.</em></h1>
-          <p className="hero-copy">Premium toy gel blasters and elevated essentials for the field, the collection, and every unforgettable squad day.</p>
-          <div className="cta-row"><a className="button primary" href="#shop">Shop blasters <span>→</span></a><a className="button ghost" href="#categories">Find your style</a></div>
+          <p className="hero-copy">Explore the collection. Product information and availability will be announced soon.</p>
+          <div className="cta-row"><a className="button primary" href="#shop">View collection <span>→</span></a><a className="button ghost" href="#categories">Find your style</a></div>
           <div className="blaster" aria-hidden="true"><div className="rail" /><div className="body" /><div className="mag" /><div className="grip" /><div className="accent" /></div>
         </section>
 
-        <div className="trust"><div><b>COD Available</b>Pay your way</div><div><b>Nationwide Delivery</b>Across the Philippines</div><div><b>Curated Selection</b>Play with confidence</div></div>
+        <div className="trust"><div><b>Store information</b>Coming soon</div><div><b>Availability</b>Coming soon</div><div><b>Product details</b>Coming soon</div></div>
 
-        <section id="shop"><div className="section-head"><div><p className="eyebrow">Selected for play</p><h2>Featured blasters</h2></div><button className="view-all">View all →</button></div><div className="product-row">{featured.map((product) => <ProductCard key={product.name} product={product} onAdd={add} />)}</div></section>
+        <section id="shop"><div className="section-head"><div><p className="eyebrow">Coming soon</p><h2>Featured products</h2></div><button className="view-all">View collection →</button></div><div className="product-row">{featured.map((product, index) => <ProductCard key={`${product.tone}-${index}`} product={product} onAdd={add} />)}</div></section>
 
         <section id="categories"><div className="section-head"><div><p className="eyebrow">Built around your style</p><h2>Choose your kit</h2></div></div><div className="category-grid">
-          <a className="category" href="#shop"><h3>Rifles &amp; SMGs</h3><span>12 products →</span></a>
-          <a className="category" href="#shop"><h3>Pistols</h3><span>18 products →</span></a>
-          <a className="category" href="#shop"><h3>Gel Balls &amp; Mags</h3><span>24 products →</span></a>
-          <a className="category" href="#shop"><h3>Parts &amp; Upgrades</h3><span>30 products →</span></a>
+          <a className="category" href="#shop"><h3>Category name</h3><span>Coming soon →</span></a>
+          <a className="category" href="#shop"><h3>Category name</h3><span>Coming soon →</span></a>
+          <a className="category" href="#shop"><h3>Category name</h3><span>Coming soon →</span></a>
+          <a className="category" href="#shop"><h3>Category name</h3><span>Coming soon →</span></a>
         </div></section>
 
-        <section id="arrivals"><div className="section-head"><div><p className="eyebrow">Just landed in Manila</p><h2>Latest arrivals</h2></div><button className="view-all">See new →</button></div><div className="product-row">{arrivals.map((product) => <ProductCard key={product.name} product={product} onAdd={add} />)}</div></section>
+        <section id="arrivals"><div className="section-head"><div><p className="eyebrow">Coming soon</p><h2>Latest arrivals</h2></div><button className="view-all">See new →</button></div><div className="product-row">{arrivals.map((product, index) => <ProductCard key={`${product.tone}-${index}`} product={product} onAdd={add} />)}</div></section>
 
-        <div className="banner"><p className="eyebrow">Field-ready promotion</p><h2>Build your first loadout.</h2><p>Get 10% off a blaster, gel balls, and eye protection when you build the full set. Designed to play better, together.</p><a className="button primary" href="#shop">Explore bundles</a></div>
+        <div className="banner"><p className="eyebrow">Coming soon</p><h2>More to discover.</h2><p>Promotions and product information will be announced here.</p><a className="button primary" href="#shop">Explore collection</a></div>
       </main>
-      <footer><span>© 2026 <b>Hydro Blasters MNL</b></span><span>Manila, Philippines</span></footer>
+      <footer><span>© 2026 <b>Hydro Blasters MNL</b></span><span>Details coming soon</span></footer>
     </div>
   )
 }

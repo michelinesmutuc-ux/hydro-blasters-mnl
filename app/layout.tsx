@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Hydro Blasters MNL — Play in Full Color',
-  description: 'Premium toy gel blasters and elevated essentials in the Philippines.',
+  description: 'Storefront details coming soon.',
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
