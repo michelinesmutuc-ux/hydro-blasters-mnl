@@ -45,8 +45,8 @@ export default function Home() {
             <h1>Hydro Blasters MNL</h1>
             <p className="hero-text">Toy gel blasters, parts, accessories, and support since 2021.</p>
             <div className="button-row">
-              <a className="primary-button" href="#shop">Shop products <span>→</span></a>
-              <a className="secondary-button" href="#visit">Book a showroom visit</a>
+              <a className="primary-button" href="#shop">Browse the arsenal <span>→</span></a>
+              <a className="secondary-button" href="#visit">Book a visit</a>
             </div>
           </div>
           <div className="hero-placeholder" aria-label="Product image placeholder">
