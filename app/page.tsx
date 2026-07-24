@@ -59,7 +59,7 @@ export default function Home() {
     <div className="shell">
       <div className="notice"><i /> Store information coming soon</div>
       <header>
-        <a className="brand" href="#top" aria-label="Hydro Blasters MNL home"><span className="brand-mark"><b>H</b></span><span>HYDRO<br />BLASTERS <span className="brand-accent">MNL</span></span></a>
+        <a className="brand" href="#top" aria-label="Hydro Blasters MNL home"><img className="brand-mark" src="/hb-mark.png" alt="Hydro Blasters MNL" /></a>
         <nav><a href="#shop">Shop</a><a href="#categories">Categories</a><a href="#arrivals">New arrivals</a></nav>
         <div className="header-actions">
           <button className="icon-btn" aria-label="Search">⌕</button>
@@ -71,6 +71,7 @@ export default function Home() {
         <section className="hero" aria-label="Gel blaster hero">
           <div className="grid" />
           <div className="hero-stat"><strong>COMING SOON</strong>Product details</div>
+          <img className="hero-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" />
           <p className="kicker">Built for the next round</p>
           <h1>Play in <em>full color.</em></h1>
           <p className="hero-copy">Explore the collection. Product information and availability will be announced soon.</p>
@@ -93,7 +94,7 @@ export default function Home() {
 
         <div className="banner"><p className="eyebrow">Coming soon</p><h2>More to discover.</h2><p>Promotions and product information will be announced here.</p><a className="button primary" href="#shop">Explore collection</a></div>
       </main>
-      <footer><span>© 2026 <b>Hydro Blasters MNL</b></span><span>Details coming soon</span></footer>
+      <footer><img className="footer-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span>Details coming soon</span></footer>
     </div>
   )
 }
