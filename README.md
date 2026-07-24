@@ -17,6 +17,19 @@ pnpm build
 
 The exported site is generated in `out/`.
 
+## Connect Supabase
+
+1. In the project root, create a new file named `.env.local`.
+2. In Supabase, open your project’s **Connect** panel and copy the **Project URL** and **Publishable Key**.
+3. Add them to `.env.local` exactly like this:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your-project-url
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+```
+
+The reusable client is at `lib/supabase/client.ts`. It does not query any tables yet. `.env.local` is ignored by Git, so do not place credentials in `.env.example`, source files, or commits.
+
 ## Deploy to Cloudflare Pages
 
 1. Push this folder to a Git repository.

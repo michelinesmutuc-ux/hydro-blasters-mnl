@@ -9,6 +9,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.8",
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
