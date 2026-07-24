@@ -111,13 +111,21 @@ export function ProductsTable() {
     setError(null)
     setNotice(null)
     try {
-      const { error: deleteError } = await supabase.from('products').delete().eq('id', product.id)
+      const { error: deleteError } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', product.id)
       if (deleteError) throw deleteError
-      const { data: remainingProducts, error: remainingError } = await supabase.from('products').select('image_urls')
-      if (remainingError) throw remainingError
-      const stillReferenced = new Set((remainingProducts ?? []).flatMap((remainingProduct) => Array.isArray(remainingProduct.image_urls) ? remainingProduct.image_urls : []))
-      await deleteProductImages(product.image_urls.filter((url) => !stillReferenced.has(url)))
-      setNotice('Product and its uploaded images were deleted.')
+      let cleanupWarning: string | null = null
+      try {
+        const { data: remainingProducts, error: remainingError } = await supabase.from('products').select('image_urls')
+        if (remainingError) throw remainingError
+        const stillReferenced = new Set((remainingProducts ?? []).flatMap((remainingProduct) => Array.isArray(remainingProduct.image_urls) ? remainingProduct.image_urls : []))
+        await deleteProductImages(product.image_urls.filter((url) => !stillReferenced.has(url)))
+      } catch (cleanupError) {
+        cleanupWarning = cleanupError instanceof Error ? cleanupError.message : 'Storage cleanup could not be completed.'
+      }
+      setNotice(cleanupWarning ? `Product row deleted. Warning: ${cleanupWarning}` : 'Product and its uploaded images were deleted.')
       await loadProducts()
     } catch (deleteError) {
       await loadProducts()

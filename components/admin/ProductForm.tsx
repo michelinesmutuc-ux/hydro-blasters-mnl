@@ -162,13 +162,38 @@ export function ProductForm({ mode }: ProductFormProps) {
         return
       }
 
-      const editPayload = { ...productPayload, image_urls: [...existingImageUrls, ...uploadedImageUrls] }
-      const removedImageUrls = loadedImageUrls.filter((url) => !existingImageUrls.includes(url))
-      console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', editPayload.image_urls)
-      const { data, error: updateError } = await supabase.from('products').update({ ...editPayload, updated_at: new Date().toISOString() }).eq('id', productId as string).select('id,image_urls').single()
+      const remainingExistingImageUrls = existingImageUrls
+      const finalImageUrls = [
+        ...remainingExistingImageUrls,
+        ...uploadedImageUrls,
+      ]
+      const removedImageUrls = loadedImageUrls.filter((url) => !remainingExistingImageUrls.includes(url))
+      const updatePayload = {
+        name: values.name.trim(),
+        slug: values.slug.trim(),
+        brand: values.brand.trim() || null,
+        category: values.category,
+        price,
+        stock,
+        status: values.status,
+        short_description: values.shortDescription.trim() || null,
+        description: values.description.trim() || null,
+        specifications: specificationsObject,
+        image_urls: finalImageUrls,
+        featured: values.featured,
+        is_active: values.isActive,
+        updated_at: new Date().toISOString(),
+      }
+      console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', finalImageUrls)
+      const { data, error: updateError } = await supabase
+        .from('products')
+        .update(updatePayload)
+        .eq('id', productId as string)
+        .select('id, image_urls')
+        .single()
       if (updateError) throw updateError
       const savedUrls: string[] = Array.isArray(data?.image_urls) ? data.image_urls : []
-      if (editPayload.image_urls.length > 0 && (savedUrls.length === 0 || savedUrls.length !== editPayload.image_urls.length || savedUrls.some((url, index) => url !== editPayload.image_urls[index]))) {
+      if (savedUrls.length !== finalImageUrls.length || savedUrls.some((url, index) => url !== finalImageUrls[index])) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
       await deleteProductImages(removedImageUrls)
