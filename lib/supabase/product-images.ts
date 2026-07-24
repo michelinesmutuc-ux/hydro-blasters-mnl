@@ -67,7 +67,7 @@ type UploadProductImagesOptions = {
   onProgress: (completed: number, total: number) => void
 }
 
-export async function uploadProductImages({ files, slug, onProgress }: UploadProductImagesOptions) {
+export async function uploadProductImages({ files, slug, onProgress }: UploadProductImagesOptions): Promise<string[]> {
   const paths: string[] = []
   const urls: string[] = []
 
@@ -93,5 +93,5 @@ export async function uploadProductImages({ files, slug, onProgress }: UploadPro
 
   console.log('[Hydro Blasters MNL] Uploaded file paths:', paths)
   console.log('[Hydro Blasters MNL] Generated public URLs:', urls)
-  return { paths, urls }
+  return urls
 }

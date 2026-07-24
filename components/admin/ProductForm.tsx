@@ -88,12 +88,12 @@ export function ProductForm({ mode }: ProductFormProps) {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
-    let specifications: Record<string, unknown> = {}
+    let specificationsObject: Record<string, unknown> = {}
     if (values.specifications.trim()) {
       try {
         const parsed: unknown = JSON.parse(values.specifications)
         if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error()
-        specifications = parsed as Record<string, unknown>
+        specificationsObject = parsed as Record<string, unknown>
       } catch {
         setError('Product specifications must be a valid JSON object.')
         return
@@ -115,21 +115,20 @@ export function ProductForm({ mode }: ProductFormProps) {
     setUploadProgress(imageFiles.length ? { completed: 0, total: imageFiles.length } : null)
 
     try {
-      const uploadResult = imageFiles.length
+      const uploadedImageUrls: string[] = imageFiles.length
         ? await uploadProductImages({
           files: imageFiles,
           slug: values.slug.trim(),
           onProgress: (completed, total) => setUploadProgress({ completed, total }),
         })
-        : { paths: [], urls: [] }
-      if (imageFiles.length > 0 && uploadResult.urls.length === 0) {
+        : []
+      if (imageFiles.length > 0 && uploadedImageUrls.length === 0) {
         throw new Error('Your images uploaded, but no public image URLs were returned. The product was not saved.')
       }
-      if (uploadResult.urls.length !== imageFiles.length) {
+      if (uploadedImageUrls.length !== imageFiles.length) {
         throw new Error('Not every selected image returned a public URL. The product was not saved.')
       }
-      const finalImageUrls = [...existingImageUrls, ...uploadResult.urls]
-      const productValues = {
+      const productPayload = {
         name: values.name.trim(),
         slug: values.slug.trim(),
         brand: values.brand.trim() || null,
@@ -139,21 +138,37 @@ export function ProductForm({ mode }: ProductFormProps) {
         status: values.status,
         short_description: values.shortDescription.trim() || null,
         description: values.description.trim() || null,
-        specifications,
-        image_urls: finalImageUrls,
+        specifications: specificationsObject,
+        image_urls: uploadedImageUrls,
         featured: values.featured,
         is_active: values.isActive,
       }
-      console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', finalImageUrls)
-      const { data: savedProduct, error: saveError } = mode === 'add'
-        ? await supabase.from('products').insert(productValues).select('id,image_urls').single()
-        : await supabase.from('products').update(productValues).eq('id', productId as string).select('id,image_urls').single()
-      if (saveError) throw saveError
-      const savedUrls: string[] = Array.isArray(savedProduct?.image_urls) ? savedProduct.image_urls : []
-      if (finalImageUrls.length > 0 && (savedUrls.length !== finalImageUrls.length || savedUrls.some((url, index) => url !== finalImageUrls[index]))) {
-        throw new Error('The product was saved, but its image URLs could not be verified. Please refresh and try again.')
+
+      if (mode === 'add') {
+        console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', productPayload.image_urls)
+        const { data, error: insertError } = await supabase
+          .from('products')
+          .insert(productPayload)
+          .select('id, image_urls')
+          .single()
+        if (insertError) throw insertError
+        const savedUrls: string[] = Array.isArray(data?.image_urls) ? data.image_urls : []
+        if (uploadedImageUrls.length > 0 && (savedUrls.length === 0 || savedUrls.length !== uploadedImageUrls.length || savedUrls.some((url, index) => url !== uploadedImageUrls[index]))) {
+          throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
+        }
+        router.push('/admin/products?created=1')
+        return
       }
-      router.push(`/admin/products?${mode === 'add' ? 'created=1' : 'updated=1'}`)
+
+      const editPayload = { ...productPayload, image_urls: [...existingImageUrls, ...uploadedImageUrls] }
+      console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', editPayload.image_urls)
+      const { data, error: updateError } = await supabase.from('products').update(editPayload).eq('id', productId as string).select('id,image_urls').single()
+      if (updateError) throw updateError
+      const savedUrls: string[] = Array.isArray(data?.image_urls) ? data.image_urls : []
+      if (editPayload.image_urls.length > 0 && (savedUrls.length === 0 || savedUrls.length !== editPayload.image_urls.length || savedUrls.some((url, index) => url !== editPayload.image_urls[index]))) {
+        throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
+      }
+      router.push('/admin/products?updated=1')
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'The product could not be saved. Please try again.')
     } finally {
