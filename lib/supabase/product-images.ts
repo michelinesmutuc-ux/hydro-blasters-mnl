@@ -68,6 +68,7 @@ type UploadProductImagesOptions = {
 }
 
 export async function uploadProductImages({ files, slug, onProgress }: UploadProductImagesOptions) {
+  const paths: string[] = []
   const urls: string[] = []
 
   for (let index = 0; index < files.length; index += 1) {
@@ -75,7 +76,7 @@ export async function uploadProductImages({ files, slug, onProgress }: UploadPro
     const file = await optimizeImage(sourceFile)
     const randomId = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
     const path = `${filenamePrefix(slug)}-${dateStamp()}-${randomId}.${extensionForType(file.type)}`
-    const { error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, file, {
+    const { data: uploadData, error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, file, {
       cacheControl: '3600',
       contentType: file.type,
       upsert: false,
@@ -85,9 +86,12 @@ export async function uploadProductImages({ files, slug, onProgress }: UploadPro
 
     const { data } = supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path)
     if (!data.publicUrl) throw new Error(`Could not create a public URL for ${sourceFile.name}.`)
+    paths.push(uploadData.path)
     urls.push(data.publicUrl)
     onProgress(index + 1, files.length)
   }
 
-  return urls
+  console.log('[Hydro Blasters MNL] Uploaded file paths:', paths)
+  console.log('[Hydro Blasters MNL] Generated public URLs:', urls)
+  return { paths, urls }
 }

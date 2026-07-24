@@ -115,13 +115,20 @@ export function ProductForm({ mode }: ProductFormProps) {
     setUploadProgress(imageFiles.length ? { completed: 0, total: imageFiles.length } : null)
 
     try {
-      const imageUrls = imageFiles.length
+      const uploadResult = imageFiles.length
         ? await uploadProductImages({
           files: imageFiles,
           slug: values.slug.trim(),
           onProgress: (completed, total) => setUploadProgress({ completed, total }),
         })
-        : []
+        : { paths: [], urls: [] }
+      if (imageFiles.length > 0 && uploadResult.urls.length === 0) {
+        throw new Error('Your images uploaded, but no public image URLs were returned. The product was not saved.')
+      }
+      if (uploadResult.urls.length !== imageFiles.length) {
+        throw new Error('Not every selected image returned a public URL. The product was not saved.')
+      }
+      const finalImageUrls = [...existingImageUrls, ...uploadResult.urls]
       const productValues = {
         name: values.name.trim(),
         slug: values.slug.trim(),
@@ -133,14 +140,19 @@ export function ProductForm({ mode }: ProductFormProps) {
         short_description: values.shortDescription.trim() || null,
         description: values.description.trim() || null,
         specifications,
-        image_urls: [...existingImageUrls, ...imageUrls],
+        image_urls: finalImageUrls,
         featured: values.featured,
         is_active: values.isActive,
       }
-      const { error: saveError } = mode === 'add'
-        ? await supabase.from('products').insert(productValues)
-        : await supabase.from('products').update(productValues).eq('id', productId as string)
+      console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', finalImageUrls)
+      const { data: savedProduct, error: saveError } = mode === 'add'
+        ? await supabase.from('products').insert(productValues).select('id,image_urls').single()
+        : await supabase.from('products').update(productValues).eq('id', productId as string).select('id,image_urls').single()
       if (saveError) throw saveError
+      const savedUrls: string[] = Array.isArray(savedProduct?.image_urls) ? savedProduct.image_urls : []
+      if (finalImageUrls.length > 0 && (savedUrls.length !== finalImageUrls.length || savedUrls.some((url, index) => url !== finalImageUrls[index]))) {
+        throw new Error('The product was saved, but its image URLs could not be verified. Please refresh and try again.')
+      }
       router.push(`/admin/products?${mode === 'add' ? 'created=1' : 'updated=1'}`)
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'The product could not be saved. Please try again.')
