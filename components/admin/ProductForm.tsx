@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
+import { uploadProductImages } from '../../lib/supabase/product-images'
+import { ProductImageUploader } from './ProductImageUploader'
 import styles from './admin.module.css'
 
 type ProductFormProps = { mode: 'add' | 'edit' }
@@ -30,6 +32,49 @@ export function ProductForm({ mode }: ProductFormProps) {
   const [slugEdited, setSlugEdited] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [existingImageUrls, setExistingImageUrls] = useState<string[]>([])
+  const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number } | null>(null)
+  const [productId, setProductId] = useState<string | null>(null)
+  const [isLoadingProduct, setIsLoadingProduct] = useState(mode === 'edit')
+
+  useEffect(() => {
+    if (mode !== 'edit') return
+    const id = new URLSearchParams(window.location.search).get('id')
+    if (!id) {
+      setError('Choose a product from the Products list to edit it.')
+      setIsLoadingProduct(false)
+      return
+    }
+
+    async function loadProduct() {
+      const { data, error: loadError } = await supabase.from('products').select('id,name,slug,brand,category,price,stock,status,short_description,description,specifications,featured,is_active,image_urls').eq('id', id).single()
+      if (loadError || !data) {
+        setError(loadError?.message ?? 'The product could not be found.')
+        setIsLoadingProduct(false)
+        return
+      }
+      setProductId(data.id)
+      setValues({
+        name: data.name,
+        slug: data.slug,
+        brand: data.brand ?? '',
+        category: data.category,
+        price: String(data.price),
+        stock: String(data.stock),
+        status: data.status,
+        shortDescription: data.short_description ?? '',
+        description: data.description ?? '',
+        specifications: JSON.stringify(data.specifications ?? {}, null, 2),
+        featured: data.featured,
+        isActive: data.is_active,
+      })
+      setSlugEdited(true)
+      setExistingImageUrls(data.image_urls ?? [])
+      setIsLoadingProduct(false)
+    }
+    loadProduct()
+  }, [mode])
 
   function update<K extends keyof typeof values>(key: K, value: (typeof values)[K]) {
     setValues((current) => ({ ...current, [key]: value }))
@@ -42,11 +87,6 @@ export function ProductForm({ mode }: ProductFormProps) {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (mode === 'edit') {
-      setError('Editing products will be connected in a future step.')
-      return
-    }
-
     setError(null)
     let specifications: Record<string, unknown> = {}
     if (values.specifications.trim()) {
@@ -66,32 +106,51 @@ export function ProductForm({ mode }: ProductFormProps) {
       setError('Please complete the required fields with a valid non-negative price and whole-number stock value.')
       return
     }
-
-    setIsSaving(true)
-    const { error: insertError } = await supabase.from('products').insert({
-      name: values.name.trim(),
-      slug: values.slug.trim(),
-      brand: values.brand.trim() || null,
-      category: values.category,
-      price,
-      stock,
-      status: values.status,
-      short_description: values.shortDescription.trim() || null,
-      description: values.description.trim() || null,
-      specifications,
-      image_urls: [],
-      featured: values.featured,
-      is_active: values.isActive,
-    })
-    setIsSaving(false)
-
-    if (insertError) {
-      setError(insertError.message)
+    if (mode === 'edit' && !productId) {
+      setError('The product could not be identified. Return to the Products list and try again.')
       return
     }
 
-    router.push('/admin/products?created=1')
+    setIsSaving(true)
+    setUploadProgress(imageFiles.length ? { completed: 0, total: imageFiles.length } : null)
+
+    try {
+      const imageUrls = imageFiles.length
+        ? await uploadProductImages({
+          files: imageFiles,
+          slug: values.slug.trim(),
+          onProgress: (completed, total) => setUploadProgress({ completed, total }),
+        })
+        : []
+      const productValues = {
+        name: values.name.trim(),
+        slug: values.slug.trim(),
+        brand: values.brand.trim() || null,
+        category: values.category,
+        price,
+        stock,
+        status: values.status,
+        short_description: values.shortDescription.trim() || null,
+        description: values.description.trim() || null,
+        specifications,
+        image_urls: [...existingImageUrls, ...imageUrls],
+        featured: values.featured,
+        is_active: values.isActive,
+      }
+      const { error: saveError } = mode === 'add'
+        ? await supabase.from('products').insert(productValues)
+        : await supabase.from('products').update(productValues).eq('id', productId as string)
+      if (saveError) throw saveError
+      router.push(`/admin/products?${mode === 'add' ? 'created=1' : 'updated=1'}`)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'The product could not be saved. Please try again.')
+    } finally {
+      setIsSaving(false)
+      setUploadProgress(null)
+    }
   }
+
+  if (isLoadingProduct) return <p className={styles.emptyState}>Loading product…</p>
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
@@ -115,7 +174,7 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="specifications">Product Specifications</label><textarea id="specifications" value={values.specifications} onChange={(event) => update('specifications', event.target.value)} placeholder='Optional JSON object, for example { "color": "black" }' /><span className={styles.slugHint}>Leave blank to save an empty JSON object.</span></div>
         </div>
       </section>
-      <section className={styles.formSection}><h2>Product images</h2><div className={styles.uploadPlaceholder}>Image upload will be connected later. New products currently save with an empty image list.</div></section>
+      <section className={styles.formSection}><h2>Product images</h2><ProductImageUploader files={imageFiles} onFilesChange={setImageFiles} existingImageUrls={existingImageUrls} onExistingImageUrlsChange={setExistingImageUrls} disabled={isSaving} progress={uploadProgress} /></section>
       <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => router.push('/admin/products')}>Cancel</button><button type="submit" className={styles.primaryButton} disabled={isSaving}>{isSaving ? 'Saving…' : mode === 'add' ? 'Save product' : 'Save changes'}</button></div>
     </form>
   )
