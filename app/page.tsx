@@ -1,17 +1,19 @@
-type PlaceholderTone = 'blue' | 'purple' | 'pink'
+const categories = ['Gel Blasters', 'Accessories', 'Magazines', 'Batteries']
 
-function ProductPlaceholder({ tone }: { tone: PlaceholderTone }) {
+const placeholders = [0, 1, 2]
+
+function ProductPlaceholder() {
   return (
-    <article className={`product product-${tone} product-placeholder`}>
-      <div className="product-image">
-        <span className="tag">Coming soon</span>
-      </div>
-      <div className="product-info">
-        <h3>Product information</h3>
-        <p>Coming soon</p>
-        <div className="price-row">
-          <span className="price">—</span>
-        </div>
+    <article className="product-card" aria-label="Product placeholder">
+      <div className="product-placeholder-image">Product image placeholder</div>
+      <div className="product-card-body">
+        <p className="placeholder-label">Placeholder</p>
+        <h3>Product name</h3>
+        <dl className="product-meta">
+          <div><dt>Price</dt><dd>Coming soon</dd></div>
+          <div><dt>Availability</dt><dd>Coming soon</dd></div>
+        </dl>
+        <button className="outline-button" type="button" disabled>View product</button>
       </div>
     </article>
   )
@@ -19,44 +21,80 @@ function ProductPlaceholder({ tone }: { tone: PlaceholderTone }) {
 
 export default function Home() {
   return (
-    <div className="shell">
-      <div className="notice"><i /> Store information coming soon</div>
-      <header>
-        <a className="brand" href="#top" aria-label="Hydro Blasters MNL home"><img className="brand-mark" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /></a>
-        <nav><a href="#shop">Shop</a><a href="#categories">Categories</a><a href="#arrivals">New arrivals</a></nav>
+    <div className="site-shell">
+      <div className="announcement"><span aria-hidden="true" />STORE INFORMATION COMING SOON</div>
+      <header className="site-header">
+        <a className="brand" href="#top" aria-label="Hydro Blasters MNL home">
+          <img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" />
+        </a>
+        <nav aria-label="Primary navigation">
+          <a href="#shop">Shop</a>
+          <a href="#categories">Categories</a>
+          <a href="#about">About</a>
+        </nav>
         <div className="header-actions">
-          <button className="icon-btn" aria-label="Search">⌕</button>
-          <button className="icon-btn" aria-label="Shopping cart">⌑ <span className="cart-count">0</span></button>
+          <button className="icon-button" type="button" aria-label="Search">⌕</button>
+          <button className="icon-button" type="button" aria-label="Cart">⌑ <span className="cart-count">0</span></button>
         </div>
       </header>
 
       <main id="top">
-        <section className="hero" aria-label="Storefront hero">
-          <div className="grid" />
-          <div className="hero-stat"><strong>COMING SOON</strong>Product details</div>
-          <img className="hero-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" />
-          <p className="kicker">Coming soon</p>
-          <h1>Storefront <em>coming soon.</em></h1>
-          <p className="hero-copy">Product and store information will be added here.</p>
-          <div className="cta-row"><a className="button primary" href="#shop">Coming soon <span>→</span></a><a className="button ghost" href="#categories">Categories</a></div>
+        <section className="hero">
+          <div className="hero-copy">
+            <p className="eyebrow">Established 2021</p>
+            <h1>Hydro Blasters MNL</h1>
+            <p className="hero-text">Toy gel blasters, parts, accessories, and support since 2021.</p>
+            <div className="button-row">
+              <a className="primary-button" href="#shop">Shop products <span>→</span></a>
+              <a className="secondary-button" href="#visit">Book a showroom visit</a>
+            </div>
+          </div>
+          <div className="hero-placeholder" aria-label="Product image placeholder">
+            <span>Product image placeholder</span>
+          </div>
         </section>
 
-        <div className="trust"><div><b>Store information</b>Coming soon</div><div><b>Availability</b>Coming soon</div><div><b>Product details</b>Coming soon</div></div>
+        <section className="section" id="categories">
+          <div className="section-heading"><p className="eyebrow">Browse</p><h2>Featured categories</h2></div>
+          <div className="category-grid">
+            {categories.map((category) => (
+              <a className="category-card" href="#shop" key={category}>
+                <div className="category-placeholder">Image placeholder</div>
+                <div><h3>{category}</h3><span>Explore category →</span></div>
+              </a>
+            ))}
+          </div>
+        </section>
 
-        <section id="shop"><div className="section-head"><div><p className="eyebrow">Coming soon</p><h2>Products</h2></div><button className="view-all">Coming soon →</button></div><div className="product-row"><ProductPlaceholder tone="blue" /><ProductPlaceholder tone="purple" /><ProductPlaceholder tone="pink" /></div></section>
+        <section className="section section-arrivals" id="shop">
+          <div className="section-heading section-heading-row"><div><p className="eyebrow">Product catalogue</p><h2>New arrivals</h2></div><span className="coming-soon">Placeholder data</span></div>
+          <div className="product-grid">{placeholders.map((item) => <ProductPlaceholder key={item} />)}</div>
+        </section>
 
-        <section id="categories"><div className="section-head"><div><p className="eyebrow">Coming soon</p><h2>Categories</h2></div></div><div className="category-grid">
-          <a className="category" href="#shop"><h3>Category</h3><span>Coming soon →</span></a>
-          <a className="category" href="#shop"><h3>Category</h3><span>Coming soon →</span></a>
-          <a className="category" href="#shop"><h3>Category</h3><span>Coming soon →</span></a>
-          <a className="category" href="#shop"><h3>Category</h3><span>Coming soon →</span></a>
-        </div></section>
+        <section className="section about-section" id="about">
+          <div className="section-heading"><p className="eyebrow">About the store</p><h2>Why Hydro Blasters MNL</h2></div>
+          <div className="fact-grid">
+            <article><span>01</span><h3>Established in 2021</h3></article>
+            <article><span>02</span><h3>Specialized toy gel blaster store</h3></article>
+            <article><span>03</span><h3>Showroom visits by appointment</h3></article>
+          </div>
+        </section>
 
-        <section id="arrivals"><div className="section-head"><div><p className="eyebrow">Coming soon</p><h2>Updates</h2></div><button className="view-all">Coming soon →</button></div><div className="product-row"><ProductPlaceholder tone="blue" /><ProductPlaceholder tone="purple" /><ProductPlaceholder tone="pink" /></div></section>
-
-        <div className="banner"><p className="eyebrow">Coming soon</p><h2>Updates coming soon.</h2><p>Store information will be added here.</p><a className="button primary" href="#shop">Coming soon</a></div>
+        <section className="visit-section" id="visit">
+          <div><p className="eyebrow">Showroom appointment</p><h2>Planning to visit?</h2><p>Showroom visits are arranged in advance.</p></div>
+          <a className="primary-button" href="#visit">Book a visit <span>→</span></a>
+        </section>
       </main>
-      <footer><img className="footer-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span>Details coming soon</span></footer>
+
+      <footer>
+        <div className="footer-brand"><img src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span>Hydro Blasters MNL</span></div>
+        <div className="footer-links">
+          <div><h3>Contact</h3><p>Information not yet provided</p></div>
+          <div><h3>Social links</h3><p>Information not yet provided</p></div>
+          <div><h3>Store policies</h3><p>Information not yet provided</p></div>
+          <div><h3>Showroom</h3><p>Information not yet provided</p></div>
+        </div>
+      </footer>
     </div>
   )
 }
