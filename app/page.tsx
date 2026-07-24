@@ -59,7 +59,7 @@ export default function Home() {
     <div className="shell">
       <div className="notice"><i /> Store information coming soon</div>
       <header>
-        <a className="brand" href="#top" aria-label="Hydro Blasters MNL home"><img className="brand-mark" src="/hb-mark.png" alt="Hydro Blasters MNL" /></a>
+        <a className="brand" href="#top" aria-label="Hydro Blasters MNL home"><img className="brand-mark" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /></a>
         <nav><a href="#shop">Shop</a><a href="#categories">Categories</a><a href="#arrivals">New arrivals</a></nav>
         <div className="header-actions">
           <button className="icon-btn" aria-label="Search">⌕</button>
