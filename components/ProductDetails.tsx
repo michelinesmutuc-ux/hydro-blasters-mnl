@@ -1,10 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase/client'
 import { ProductImageFrame } from './ProductImageFrame'
 
-type Product = {
+export type Product = {
   id: string
   name: string
   slug: string
@@ -27,27 +26,8 @@ function ProductUnavailable() {
   return <section className="section product-unavailable"><p className="eyebrow">Product unavailable</p><h1>This product is not available</h1><p>The product may no longer exist or is not currently active.</p><a className="primary-button" href="/shop">Return to shop</a></section>
 }
 
-export function ProductDetails({ slug }: { slug: string }) {
-  const [product, setProduct] = useState<Product | null>(null)
+export function ProductDetails({ product, error }: { product: Product | null; error?: string | null }) {
   const [selectedImage, setSelectedImage] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function loadProduct() {
-      const { data, error: queryError } = await supabase
-        .from('products')
-        .select('id,name,slug,brand,category,price,stock,status,short_description,description,specifications,image_urls')
-        .eq('slug', slug)
-        .eq('is_active', true)
-        .maybeSingle()
-
-      if (queryError) setError(queryError.message)
-      else setProduct(data as Product | null)
-      setLoading(false)
-    }
-    loadProduct()
-  }, [slug])
 
   useEffect(() => {
     if (product) {
@@ -56,7 +36,6 @@ export function ProductDetails({ slug }: { slug: string }) {
     }
   }, [product])
 
-  if (loading) return <section className="section"><div className="catalogue-state">Loading product…</div></section>
   if (error) return <section className="section"><div className="catalogue-state" role="alert">This product could not be loaded. Please try again later.</div></section>
   if (!product) return <ProductUnavailable />
 
