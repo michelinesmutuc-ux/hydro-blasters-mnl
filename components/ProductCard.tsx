@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProductImageFrame } from './ProductImageFrame'
 
@@ -27,10 +27,21 @@ function statusLabel(status: PublicProduct['status']) {
 
 export function ProductCard({ product, actions }: ProductCardProps) {
   const imageUrl = product.image_urls[0]
+  const productHref = `/products/${product.slug}`
+  const linkRef = useRef<HTMLAnchorElement>(null)
+
+  useEffect(() => {
+    console.log({
+      name: product.name,
+      slug: product.slug,
+      href: productHref,
+      renderedHref: linkRef.current?.getAttribute('href'),
+    })
+  }, [product.name, product.slug, productHref])
 
   return (
     <article className="product-card">
-      <Link className="shop-product-link" href={`/products/${product.slug}`} aria-label={`View ${product.name}`}>
+      <Link ref={linkRef} className="shop-product-link" href={productHref} aria-label={`View ${product.name}`}>
         <ProductImageFrame src={imageUrl} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="card" />
         <div className="product-card-body">
           <p className="placeholder-label">{product.category}</p>

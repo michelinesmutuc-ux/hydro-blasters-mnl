@@ -1,6 +1,9 @@
 import { FeaturedCategories } from '../components/FeaturedCategories'
 import { PublicProducts } from '../components/PublicProducts'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default function Home() {
   return (
     <div className="site-shell">
