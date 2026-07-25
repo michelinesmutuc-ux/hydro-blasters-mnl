@@ -56,6 +56,22 @@ export function ProductsTable() {
     if (params.get('created') === '1') setNotice('Product saved successfully.')
     if (params.get('updated') === '1') setNotice('Product updated successfully.')
     loadProducts()
+    function refreshUpdatedProduct() {
+      try {
+        const stored = window.localStorage.getItem('hydro-products-updated')
+        const updatedProduct = stored ? JSON.parse(stored).product as Product | undefined : undefined
+        if (updatedProduct) setProducts((current) => current.map((product) => product.id === updatedProduct.id ? updatedProduct : product))
+      } catch {
+        // A fresh query below remains the source of truth if the signal cannot be read.
+      }
+      loadProducts()
+    }
+    window.addEventListener('hydro-products-updated', refreshUpdatedProduct)
+    window.addEventListener('storage', loadProducts)
+    return () => {
+      window.removeEventListener('hydro-products-updated', refreshUpdatedProduct)
+      window.removeEventListener('storage', loadProducts)
+    }
   }, [loadProducts])
 
   async function nextCopySlug(sourceSlug: string) {

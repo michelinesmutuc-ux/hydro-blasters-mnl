@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase/client'
 import { ProductCard, type PublicProduct } from './ProductCard'
 
@@ -55,19 +55,37 @@ export function ShopProducts() {
     setUrlReady(true)
   }, [])
 
-  useEffect(() => {
-    async function loadProducts() {
-      const { data, error: queryError } = await supabase
-        .from('products')
-        .select('id,name,slug,brand,category,price,stock,status,image_urls,featured,created_at,short_description')
-        .eq('is_active', true)
+  const loadProducts = useCallback(async () => {
+    const { data, error: queryError } = await supabase
+      .from('products')
+      .select('id,name,slug,brand,category,price,stock,status,image_urls,featured,created_at,short_description')
+      .eq('is_active', true)
 
-      if (queryError) setError(queryError.message)
-      else setProducts((data ?? []) as ShopProduct[])
-      setLoading(false)
+    if (queryError) setError(queryError.message)
+    else {
+      const currentProducts = (data ?? []) as ShopProduct[]
+      setProducts(currentProducts)
+      setError(null)
+      const product = currentProducts[0]
+      if (product) {
+        console.log('Current slug:', product.slug)
+        console.log('Generated href:', `/products/${product.slug}`)
+      }
     }
-    loadProducts()
+    setLoading(false)
   }, [])
+
+  useEffect(() => {
+    loadProducts()
+    window.addEventListener('hydro-products-updated', loadProducts)
+    window.addEventListener('focus', loadProducts)
+    window.addEventListener('storage', loadProducts)
+    return () => {
+      window.removeEventListener('hydro-products-updated', loadProducts)
+      window.removeEventListener('focus', loadProducts)
+      window.removeEventListener('storage', loadProducts)
+    }
+  }, [loadProducts])
 
   useEffect(() => {
     if (urlReady) updateShopUrl(filters)

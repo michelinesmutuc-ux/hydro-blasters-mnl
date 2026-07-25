@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase/client'
 import { ProductCard, type PublicProduct } from './ProductCard'
 
@@ -11,22 +11,35 @@ export function PublicProducts({ featuredOnly = false }: PublicProductsProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function loadProducts() {
+  const loadProducts = useCallback(async () => {
+    const { data, error: queryError } = await (() => {
       let query = supabase
         .from('products')
         .select('id,name,slug,brand,category,price,stock,status,image_urls')
         .eq('is_active', true)
       if (featuredOnly) query = query.eq('featured', true)
-      const { data, error: queryError } = await query
-        .order('created_at', { ascending: false })
+      return query.order('created_at', { ascending: false })
+    })()
 
-      if (queryError) setError(queryError.message)
-      else setProducts((data ?? []) as PublicProduct[])
-      setLoading(false)
+    if (queryError) setError(queryError.message)
+    else {
+      setProducts((data ?? []) as PublicProduct[])
+      setError(null)
     }
-    loadProducts()
+    setLoading(false)
   }, [featuredOnly])
+
+  useEffect(() => {
+    loadProducts()
+    window.addEventListener('hydro-products-updated', loadProducts)
+    window.addEventListener('focus', loadProducts)
+    window.addEventListener('storage', loadProducts)
+    return () => {
+      window.removeEventListener('hydro-products-updated', loadProducts)
+      window.removeEventListener('focus', loadProducts)
+      window.removeEventListener('storage', loadProducts)
+    }
+  }, [loadProducts])
 
   if (loading) return <div className="catalogue-state">Loading products…</div>
   if (error) return <div className="catalogue-state" role="alert">Products are unavailable right now. Please try again later.</div>

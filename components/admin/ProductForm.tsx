@@ -163,14 +163,17 @@ export function ProductForm({ mode }: ProductFormProps) {
         const { data, error: insertError } = await supabase
           .from('products')
           .insert({ ...productPayload, id: uploadProductId })
-          .select('id, name, slug, image_urls')
+          .select('id,name,slug,brand,category,price,stock,status,featured,is_active,image_urls')
           .single()
         if (insertError) throw insertError
         const savedUrls: string[] = Array.isArray(data?.image_urls) ? data.image_urls : []
         if (uploadedImageUrls.length > 0 && (savedUrls.length === 0 || savedUrls.length !== uploadedImageUrls.length || savedUrls.some((url, index) => url !== uploadedImageUrls[index]))) {
           throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
         }
+        window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: data, updatedAt: Date.now() }))
+        window.dispatchEvent(new Event('hydro-products-updated'))
         router.push('/admin/products?created=1')
+        router.refresh()
         return
       }
 
@@ -201,7 +204,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         .from('products')
         .update(updatePayload)
         .eq('id', productId as string)
-        .select('id, name, slug, image_urls')
+        .select('id,name,slug,brand,category,price,stock,status,featured,is_active,image_urls')
         .single()
       if (updateError) throw updateError
       const savedUrls: string[] = Array.isArray(data?.image_urls) ? data.image_urls : []
@@ -209,7 +212,10 @@ export function ProductForm({ mode }: ProductFormProps) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
       await deleteProductImages(removedImageUrls)
+      window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: data, updatedAt: Date.now() }))
+      window.dispatchEvent(new Event('hydro-products-updated'))
       router.push('/admin/products?updated=1')
+      router.refresh()
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'The product could not be saved. Please try again.')
     } finally {

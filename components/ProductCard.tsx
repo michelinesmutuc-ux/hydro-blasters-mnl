@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import Link from 'next/link'
 import { ProductImageFrame } from './ProductImageFrame'
 
 export type PublicProduct = {
@@ -29,7 +30,7 @@ export function ProductCard({ product, actions }: ProductCardProps) {
 
   return (
     <article className="product-card">
-      <a className="shop-product-link" href={`/products/${encodeURIComponent(product.slug)}`} aria-label={`View ${product.name}`}>
+      <Link className="shop-product-link" href={`/products/${product.slug}`} aria-label={`View ${product.name}`}>
         <ProductImageFrame src={imageUrl} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="card" />
         <div className="product-card-body">
           <p className="placeholder-label">{product.category}</p>
@@ -42,7 +43,7 @@ export function ProductCard({ product, actions }: ProductCardProps) {
             <div><dt>Pre-order</dt><dd>{product.status === 'preorder' ? 'Available' : 'Not available'}</dd></div>
           </dl>
         </div>
-      </a>
+      </Link>
       {actions && <div className="product-card-actions">{actions}</div>}
     </article>
   )
