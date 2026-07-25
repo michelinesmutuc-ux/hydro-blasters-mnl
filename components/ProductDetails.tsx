@@ -16,7 +16,7 @@ type Product = {
   short_description: string | null
   description: string | null
   specifications: Record<string, unknown>
-  image_urls: string[]
+  image_urls?: string[]
 }
 
 function statusLabel(status: Product['status']) {
@@ -49,12 +49,21 @@ export function ProductDetails({ slug }: { slug: string }) {
     loadProduct()
   }, [slug])
 
+  useEffect(() => {
+    if (product) {
+      console.log(product)
+      console.log(product.image_urls)
+    }
+  }, [product])
+
   if (loading) return <section className="section"><div className="catalogue-state">Loading product…</div></section>
   if (error) return <section className="section"><div className="catalogue-state" role="alert">This product could not be loaded. Please try again later.</div></section>
   if (!product) return <ProductUnavailable />
 
-  const mainImage = product.image_urls[selectedImage]
+  const firstImage = product.image_urls?.[0] ?? null
+  const mainImage = product.image_urls?.[selectedImage] ?? firstImage
   const specificationEntries = Object.entries(product.specifications ?? {})
+  const productImages = product.image_urls ?? []
 
   return (
     <section className="section product-detail">
@@ -62,7 +71,7 @@ export function ProductDetails({ slug }: { slug: string }) {
       <div className="product-detail-grid">
         <div className="product-gallery">
           <ProductImageFrame src={mainImage} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="main" />
-          {product.image_urls.length > 1 && <div className="product-thumbnails" aria-label="Product images">{product.image_urls.map((imageUrl, index) => <button className={`${stylesForThumbnail(index === selectedImage)}`} type="button" key={imageUrl} onClick={() => setSelectedImage(index)} aria-label={`Show image ${index + 1} of ${product.name}`} aria-pressed={index === selectedImage}><ProductImageFrame src={imageUrl} alt="" fallbackLabel={`Image ${index + 1}`} variant="thumbnail" /></button>)}</div>}
+          {productImages.length > 1 && <div className="product-thumbnails" aria-label="Product images">{productImages.map((imageUrl, index) => <button className={`${stylesForThumbnail(index === selectedImage)}`} type="button" key={imageUrl} onClick={() => setSelectedImage(index)} aria-label={`Show image ${index + 1} of ${product.name}`} aria-pressed={index === selectedImage}><ProductImageFrame src={imageUrl} alt="" fallbackLabel={`Image ${index + 1}`} variant="thumbnail" /></button>)}</div>}
         </div>
         <div className="product-detail-copy">
           <p className="eyebrow">{product.category}</p>
