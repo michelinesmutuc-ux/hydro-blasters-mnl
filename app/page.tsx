@@ -1,5 +1,4 @@
-const categories = ['Gel Blasters', 'Accessories', 'Magazines', 'Batteries']
-
+import { FeaturedCategories } from '../components/FeaturedCategories'
 import { PublicProducts } from '../components/PublicProducts'
 
 export default function Home() {
@@ -39,14 +38,12 @@ export default function Home() {
 
         <section className="section" id="categories">
           <div className="section-heading"><p className="eyebrow">Browse</p><h2>Featured categories</h2></div>
-          <div className="category-grid">
-            {categories.map((category) => (
-              <a className="category-card" href="#shop" key={category}>
-                <div className="category-placeholder">Image placeholder</div>
-                <div><h3>{category}</h3><span>Explore category →</span></div>
-              </a>
-            ))}
-          </div>
+          <FeaturedCategories />
+        </section>
+
+        <section className="section section-arrivals">
+          <div className="section-heading"><p className="eyebrow">Selected products</p><h2>Featured products</h2></div>
+          <PublicProducts featuredOnly />
         </section>
 
         <section className="section section-arrivals" id="shop">
