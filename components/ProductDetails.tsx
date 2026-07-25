@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase/client'
+import { ProductImageFrame } from './ProductImageFrame'
 
 type Product = {
   id: string
@@ -31,7 +32,6 @@ export function ProductDetails({ slug }: { slug: string }) {
   const [selectedImage, setSelectedImage] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [imageFailed, setImageFailed] = useState(false)
 
   useEffect(() => {
     async function loadProduct() {
@@ -61,8 +61,8 @@ export function ProductDetails({ slug }: { slug: string }) {
       <a className="back-link" href="/shop">← Back to shop</a>
       <div className="product-detail-grid">
         <div className="product-gallery">
-          {mainImage && !imageFailed ? <img className="product-main-image" src={mainImage} alt={product.name} onError={() => setImageFailed(true)} /> : <div className="product-main-image product-placeholder-image" role="img" aria-label={`Image unavailable for ${product.name}`}>Product image unavailable</div>}
-          {product.image_urls.length > 1 && <div className="product-thumbnails" aria-label="Product images">{product.image_urls.map((imageUrl, index) => <button className={`${stylesForThumbnail(index === selectedImage)}`} type="button" key={imageUrl} onClick={() => { setSelectedImage(index); setImageFailed(false) }} aria-label={`Show image ${index + 1} of ${product.name}`} aria-pressed={index === selectedImage}><img src={imageUrl} alt="" /></button>)}</div>}
+          <ProductImageFrame src={mainImage} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="main" />
+          {product.image_urls.length > 1 && <div className="product-thumbnails" aria-label="Product images">{product.image_urls.map((imageUrl, index) => <button className={`${stylesForThumbnail(index === selectedImage)}`} type="button" key={imageUrl} onClick={() => setSelectedImage(index)} aria-label={`Show image ${index + 1} of ${product.name}`} aria-pressed={index === selectedImage}><ProductImageFrame src={imageUrl} alt="" fallbackLabel={`Image ${index + 1}`} variant="thumbnail" /></button>)}</div>}
         </div>
         <div className="product-detail-copy">
           <p className="eyebrow">{product.category}</p>

@@ -1,7 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { ProductImageFrame } from './ProductImageFrame'
 
 export type PublicProduct = {
   id: string
@@ -25,13 +25,12 @@ function statusLabel(status: PublicProduct['status']) {
 }
 
 export function ProductCard({ product, actions }: ProductCardProps) {
-  const [imageFailed, setImageFailed] = useState(false)
   const imageUrl = product.image_urls[0]
 
   return (
     <article className="product-card">
       <a className="shop-product-link" href={`/products/${encodeURIComponent(product.slug)}`} aria-label={`View ${product.name}`}>
-        {imageUrl && !imageFailed ? <img className="product-image" src={imageUrl} alt={product.name} onError={() => setImageFailed(true)} /> : <div className="product-placeholder-image" role="img" aria-label={`Image unavailable for ${product.name}`}>Product image unavailable</div>}
+        <ProductImageFrame src={imageUrl} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="card" />
         <div className="product-card-body">
           <p className="placeholder-label">{product.category}</p>
           <h2>{product.name}</h2>
