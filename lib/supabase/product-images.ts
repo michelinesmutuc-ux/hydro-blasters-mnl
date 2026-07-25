@@ -19,11 +19,6 @@ function dateStamp() {
   return `${now.getFullYear()}${month}${day}`
 }
 
-function filenamePrefix(value: string) {
-  const prefix = value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
-  return prefix || 'product'
-}
-
 function loadImage(file: File) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const imageUrl = URL.createObjectURL(file)
@@ -63,11 +58,11 @@ async function optimizeImage(file: File) {
 
 type UploadProductImagesOptions = {
   files: File[]
-  slug: string
+  productId: string
   onProgress: (completed: number, total: number) => void
 }
 
-export async function uploadProductImages({ files, slug, onProgress }: UploadProductImagesOptions): Promise<string[]> {
+export async function uploadProductImages({ files, productId, onProgress }: UploadProductImagesOptions): Promise<string[]> {
   const paths: string[] = []
   const urls: string[] = []
 
@@ -75,7 +70,7 @@ export async function uploadProductImages({ files, slug, onProgress }: UploadPro
     const sourceFile = files[index]
     const file = await optimizeImage(sourceFile)
     const randomId = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
-    const path = `${filenamePrefix(slug)}-${dateStamp()}-${randomId}.${extensionForType(file.type)}`
+    const path = `products/${productId}/image-${dateStamp()}-${randomId}.${extensionForType(file.type)}`
     const { data: uploadData, error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, file, {
       cacheControl: '3600',
       contentType: file.type,

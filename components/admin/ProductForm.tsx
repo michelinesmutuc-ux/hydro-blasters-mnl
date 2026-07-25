@@ -35,6 +35,7 @@ export function ProductForm({ mode }: ProductFormProps) {
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>([])
   const [loadedImageUrls, setLoadedImageUrls] = useState<string[]>([])
+  const [originalSlug, setOriginalSlug] = useState('')
   const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number } | null>(null)
   const [productId, setProductId] = useState<string | null>(null)
   const [isLoadingProduct, setIsLoadingProduct] = useState(mode === 'edit')
@@ -70,9 +71,11 @@ export function ProductForm({ mode }: ProductFormProps) {
         featured: data.featured,
         isActive: data.is_active,
       })
+      const existingUrls = Array.isArray(data.image_urls) ? data.image_urls : []
       setSlugEdited(true)
-      setExistingImageUrls(data.image_urls ?? [])
-      setLoadedImageUrls(data.image_urls ?? [])
+      setOriginalSlug(data.slug)
+      setExistingImageUrls(existingUrls)
+      setLoadedImageUrls(existingUrls)
       setIsLoadingProduct(false)
     }
     loadProduct()
@@ -85,6 +88,12 @@ export function ProductForm({ mode }: ProductFormProps) {
   function handleNameChange(name: string) {
     update('name', name)
     if (!slugEdited) update('slug', slugify(name))
+  }
+
+  async function validateUniqueSlug(slug: string, currentProductId: string | null) {
+    const { data, error: slugError } = await supabase.from('products').select('id').eq('slug', slug).limit(1)
+    if (slugError) throw slugError
+    if (data?.some((product) => product.id !== currentProductId)) throw new Error('This slug is already in use. Choose another unique slug before saving.')
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -102,9 +111,10 @@ export function ProductForm({ mode }: ProductFormProps) {
       }
     }
 
+    const normalizedSlug = slugify(values.slug)
     const price = Number(values.price)
     const stock = Number(values.stock)
-    if (!values.name.trim() || !values.slug.trim() || !values.category || !Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0) {
+    if (!values.name.trim() || !normalizedSlug || !values.category || !Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0) {
       setError('Please complete the required fields with a valid non-negative price and whole-number stock value.')
       return
     }
@@ -117,10 +127,12 @@ export function ProductForm({ mode }: ProductFormProps) {
     setUploadProgress(imageFiles.length ? { completed: 0, total: imageFiles.length } : null)
 
     try {
+      await validateUniqueSlug(normalizedSlug, productId)
+      const uploadProductId = productId ?? crypto.randomUUID()
       const uploadedImageUrls: string[] = imageFiles.length
         ? await uploadProductImages({
           files: imageFiles,
-          slug: values.slug.trim(),
+          productId: uploadProductId,
           onProgress: (completed, total) => setUploadProgress({ completed, total }),
         })
         : []
@@ -132,7 +144,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       }
       const productPayload = {
         name: values.name.trim(),
-        slug: values.slug.trim(),
+        slug: normalizedSlug,
         brand: values.brand.trim() || null,
         category: values.category,
         price,
@@ -150,8 +162,8 @@ export function ProductForm({ mode }: ProductFormProps) {
         console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', productPayload.image_urls)
         const { data, error: insertError } = await supabase
           .from('products')
-          .insert(productPayload)
-          .select('id, image_urls')
+          .insert({ ...productPayload, id: uploadProductId })
+          .select('id, name, slug, image_urls')
           .single()
         if (insertError) throw insertError
         const savedUrls: string[] = Array.isArray(data?.image_urls) ? data.image_urls : []
@@ -162,7 +174,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         return
       }
 
-      const remainingExistingImageUrls = existingImageUrls
+      const remainingExistingImageUrls = [...existingImageUrls]
       const finalImageUrls = [
         ...remainingExistingImageUrls,
         ...uploadedImageUrls,
@@ -170,7 +182,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       const removedImageUrls = loadedImageUrls.filter((url) => !remainingExistingImageUrls.includes(url))
       const updatePayload = {
         name: values.name.trim(),
-        slug: values.slug.trim(),
+        slug: normalizedSlug,
         brand: values.brand.trim() || null,
         category: values.category,
         price,
@@ -189,7 +201,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         .from('products')
         .update(updatePayload)
         .eq('id', productId as string)
-        .select('id, image_urls')
+        .select('id, name, slug, image_urls')
         .single()
       if (updateError) throw updateError
       const savedUrls: string[] = Array.isArray(data?.image_urls) ? data.image_urls : []
@@ -215,7 +227,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         <h2>Product information</h2>
         <div className={styles.fieldGrid}>
           <div className={styles.field}><label htmlFor="product-name">Product Name</label><input id="product-name" required value={values.name} onChange={(event) => handleNameChange(event.target.value)} placeholder="Enter product name" /></div>
-          <div className={styles.field}><label htmlFor="product-slug">Slug</label><input id="product-slug" required value={values.slug} onChange={(event) => { setSlugEdited(true); update('slug', event.target.value) }} placeholder="product-slug" /><span className={styles.slugHint}>Generated from the name until you edit it.</span></div>
+          <div className={styles.field}><label htmlFor="product-slug">Slug</label><div className={styles.slugControls}><input id="product-slug" required value={values.slug} onChange={(event) => { setSlugEdited(true); update('slug', slugify(event.target.value)) }} placeholder="product-slug" /><button type="button" onClick={() => { setSlugEdited(true); update('slug', slugify(values.name)) }}>Regenerate slug from name</button></div><span className={styles.slugHint}>{mode === 'edit' ? 'Changing the slug changes the public product URL. It stays unchanged when you edit the product name.' : 'Generated from the product name. You can edit it before saving.'}</span>{mode === 'edit' && originalSlug && values.slug !== originalSlug && <span className={styles.slugWarning}>Public URL will change from /products/{originalSlug}.</span>}</div>
           <div className={styles.field}><label htmlFor="brand">Brand</label><input id="brand" value={values.brand} onChange={(event) => update('brand', event.target.value)} placeholder="Brand name" /></div>
           <div className={styles.field}><label htmlFor="category">Category</label><select id="category" required value={values.category} onChange={(event) => update('category', event.target.value)}><option value="" disabled>Select a category</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
           <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={values.price} onChange={(event) => update('price', event.target.value)} /></div>
