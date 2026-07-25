@@ -1,20 +1,31 @@
 import { ProductDetails, type Product } from '../../../components/ProductDetails'
 import { supabase } from '../../../lib/supabase/client'
 
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
+export const dynamicParams = false
+
+export async function generateStaticParams() {
+  const { data, error } = await supabase
+    .from('products')
+    .select('slug')
+    .eq('is_active', true)
+
+  if (error) throw new Error(`Could not export product pages: ${error.message}`)
+
+  const activeProductParams = (data ?? []).map((product) => ({ slug: product.slug }))
+
+  // Next.js requires at least one path for a dynamic route in static-export mode.
+  // This inert route is omitted whenever the catalogue contains an active product.
+  return activeProductParams.length > 0 ? activeProductParams : [{ slug: '__catalogue-empty__' }]
+}
 
 export default async function ProductPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
   const params = await paramsPromise
-  console.log('params.slug', params.slug)
   const { data, error } = await supabase
     .from('products')
     .select('id,name,slug,brand,category,price,stock,status,short_description,description,specifications,image_urls')
     .eq('slug', params.slug)
     .eq('is_active', true)
     .maybeSingle()
-  console.log('returned product', data)
-
   return (
     <div className="site-shell">
       <div className="announcement"><span aria-hidden="true" />STORE INFORMATION COMING SOON</div>

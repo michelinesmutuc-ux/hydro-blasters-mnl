@@ -53,7 +53,7 @@ export function ProductsTable() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('created') === '1') setNotice('Product saved successfully.')
+    if (params.get('created') === '1') setNotice('Product saved successfully. Deploy the website before its product-detail URL becomes available.')
     if (params.get('updated') === '1') setNotice('Product updated successfully.')
     loadProducts()
     function refreshUpdatedProduct() {

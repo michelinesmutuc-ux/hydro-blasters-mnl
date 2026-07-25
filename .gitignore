@@ -1,8 +1,5 @@
 node_modules/
 .next/
-.open-next/
-.wrangler/
-.dev.vars
 out/
 .env*
 !.env.example

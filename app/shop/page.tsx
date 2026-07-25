@@ -1,8 +1,5 @@
 import { ShopProducts } from '../../components/ShopProducts'
 
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
-
 export default function ShopPage() {
   return (
     <div className="site-shell">
