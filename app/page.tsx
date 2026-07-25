@@ -11,7 +11,7 @@ export default function Home() {
           <img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" />
         </a>
         <nav aria-label="Primary navigation">
-          <a href="#shop">Shop</a>
+          <a href="/shop">Shop</a>
           <a href="#categories">Categories</a>
           <a href="#about">About</a>
         </nav>
@@ -28,7 +28,7 @@ export default function Home() {
             <h1>Hydro Blasters MNL</h1>
             <p className="hero-text">Toy gel blasters, parts, accessories, and support since 2021.</p>
             <div className="button-row">
-              <a className="primary-button" href="#shop">Browse the arsenal <span>→</span></a>
+              <a className="primary-button" href="/shop">Browse the arsenal <span>→</span></a>
               <a className="secondary-button" href="#visit">Book a visit</a>
             </div>
           </div>
