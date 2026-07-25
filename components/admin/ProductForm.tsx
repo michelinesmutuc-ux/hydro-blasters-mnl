@@ -23,12 +23,13 @@ function slugify(value: string) {
 }
 
 function initialValues() {
-  return { name: '', slug: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shortDescription: '', description: '', specifications: '', featured: false, isActive: false }
+  return { name: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shortDescription: '', description: '', specifications: '', featured: false, isActive: false }
 }
 
 export function ProductForm({ mode }: ProductFormProps) {
   const router = useRouter()
   const [values, setValues] = useState(initialValues)
+  const [slug, setSlug] = useState('')
   const [slugEdited, setSlugEdited] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -59,7 +60,6 @@ export function ProductForm({ mode }: ProductFormProps) {
       setProductId(data.id)
       setValues({
         name: data.name,
-        slug: data.slug,
         brand: data.brand ?? '',
         category: data.category,
         price: String(data.price),
@@ -71,6 +71,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         featured: data.featured,
         isActive: data.is_active,
       })
+      setSlug(data.slug)
       const existingUrls = Array.isArray(data.image_urls) ? data.image_urls : []
       setSlugEdited(true)
       setOriginalSlug(data.slug)
@@ -87,7 +88,7 @@ export function ProductForm({ mode }: ProductFormProps) {
 
   function handleNameChange(name: string) {
     update('name', name)
-    if (!slugEdited) update('slug', slugify(name))
+    if (!slugEdited) setSlug(slugify(name))
   }
 
   async function validateUniqueSlug(slug: string, currentProductId: string | null) {
@@ -111,7 +112,11 @@ export function ProductForm({ mode }: ProductFormProps) {
       }
     }
 
-    const normalizedSlug = slugify(values.slug)
+    const normalizedSlug = slug
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
     const price = Number(values.price)
     const stock = Number(values.stock)
     if (!values.name.trim() || !normalizedSlug || !values.category || !Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0) {
@@ -199,6 +204,9 @@ export function ProductForm({ mode }: ProductFormProps) {
         is_active: values.isActive,
         updated_at: new Date().toISOString(),
       }
+      console.log('Slug input state:', slug)
+      console.log('Normalized slug:', normalizedSlug)
+      console.log('Update payload:', updatePayload)
       console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', finalImageUrls)
       const { data, error: updateError } = await supabase
         .from('products')
@@ -207,11 +215,17 @@ export function ProductForm({ mode }: ProductFormProps) {
         .select('id,name,slug,brand,category,price,stock,status,featured,is_active,image_urls')
         .single()
       if (updateError) throw updateError
+      console.log('Returned Supabase row:', data)
+      if (data.slug !== normalizedSlug) {
+        throw new Error(`Slug was not updated. Expected ${normalizedSlug}, received ${data.slug}`)
+      }
       const savedUrls: string[] = Array.isArray(data?.image_urls) ? data.image_urls : []
       if (savedUrls.length !== finalImageUrls.length || savedUrls.some((url, index) => url !== finalImageUrls[index])) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
       await deleteProductImages(removedImageUrls)
+      setSlug(data.slug)
+      setOriginalSlug(data.slug)
       window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: data, updatedAt: Date.now() }))
       window.dispatchEvent(new Event('hydro-products-updated'))
       router.push('/admin/products?updated=1')
@@ -233,7 +247,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         <h2>Product information</h2>
         <div className={styles.fieldGrid}>
           <div className={styles.field}><label htmlFor="product-name">Product Name</label><input id="product-name" required value={values.name} onChange={(event) => handleNameChange(event.target.value)} placeholder="Enter product name" /></div>
-          <div className={styles.field}><label htmlFor="product-slug">Slug</label><div className={styles.slugControls}><input id="product-slug" required value={values.slug} onChange={(event) => { setSlugEdited(true); update('slug', slugify(event.target.value)) }} placeholder="product-slug" /><button type="button" onClick={() => { setSlugEdited(true); update('slug', slugify(values.name)) }}>Regenerate slug from name</button></div><span className={styles.slugHint}>{mode === 'edit' ? 'Changing the slug changes the public product URL. It stays unchanged when you edit the product name.' : 'Generated from the product name. You can edit it before saving.'}</span>{mode === 'edit' && originalSlug && values.slug !== originalSlug && <span className={styles.slugWarning}>Public URL will change from /products/{originalSlug}.</span>}</div>
+          <div className={styles.field}><label htmlFor="product-slug">Slug</label><div className={styles.slugControls}><input id="product-slug" required value={slug} onChange={(event) => { setSlugEdited(true); setSlug(event.target.value) }} placeholder="product-slug" /><button type="button" onClick={() => { setSlugEdited(true); setSlug(slugify(values.name)) }}>Regenerate slug from name</button></div><span className={styles.slugHint}>{mode === 'edit' ? 'Changing the slug changes the public product URL. It stays unchanged when you edit the product name.' : 'Generated from the product name. You can edit it before saving.'}</span>{mode === 'edit' && originalSlug && slug !== originalSlug && <span className={styles.slugWarning}>Public URL will change from /products/{originalSlug}.</span>}</div>
           <div className={styles.field}><label htmlFor="brand">Brand</label><input id="brand" value={values.brand} onChange={(event) => update('brand', event.target.value)} placeholder="Brand name" /></div>
           <div className={styles.field}><label htmlFor="category">Category</label><select id="category" required value={values.category} onChange={(event) => update('category', event.target.value)}><option value="" disabled>Select a category</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
           <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={values.price} onChange={(event) => update('price', event.target.value)} /></div>
