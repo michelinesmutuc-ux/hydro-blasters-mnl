@@ -141,9 +141,15 @@ export function ProductForm({ mode }: ProductFormProps) {
   }
 
   function specificationPayload(targetProductId: string, rows: SpecificationRow[]): SpecificationPayloadRow[] {
-    const validRows = rows
-      .map((row) => ({ label: row.label.trim(), value: row.value.trim() }))
-      .filter((row) => row.label || row.value)
+    const normalizedRows = rows.map((row, index) => ({
+      label: row.label.trim(),
+      value: row.value.trim(),
+      sort_order: index,
+    }))
+    const validRows = normalizedRows.filter((row) => row.label !== '' || row.value !== '')
+
+    console.log('[Hydro Blasters MNL] Visible specification rows:', normalizedRows)
+    console.log('[Hydro Blasters MNL] Filtered valid rows:', validRows)
 
     if (validRows.some((row) => !row.label || !row.value)) {
       throw new Error('Each specification needs both a label and a value, or remove the incomplete row.')
@@ -193,7 +199,7 @@ export function ProductForm({ mode }: ProductFormProps) {
 
   async function saveSpecificationRows(targetProductId: string, rows: SpecificationRow[], replaceExisting: boolean) {
     const validRows = specificationPayload(targetProductId, rows)
-    console.log('[Hydro Blasters MNL] Payload rows at save click:', validRows.length, validRows.map((row) => ({ label: row.label, value: row.value, sort_order: row.sort_order })))
+    console.log('[Hydro Blasters MNL] Rows sent to Supabase:', validRows)
     if (!replaceExisting && validRows.length === 0) return
     const { data: deletedRows, error: deleteError } = await supabase.from('product_specifications').delete().eq('product_id', targetProductId).select('id')
     if (deleteError) {
