@@ -10,6 +10,8 @@ import styles from './admin.module.css'
 
 type ProductFormProps = { mode: 'add' | 'edit' }
 type SpecificationRow = { id: string; label: string; value: string }
+type SpecificationPayloadRow = { product_id: string; label: string; value: string; sort_order: number }
+type SupabaseError = { message?: string; code?: string; details?: string | null; hint?: string | null }
 
 const statusOptions = [
   { value: 'draft', label: 'Draft' },
@@ -133,21 +135,46 @@ export function ProductForm({ mode }: ProductFormProps) {
     })
   }
 
-  async function saveSpecificationRows(targetProductId: string, rows: SpecificationRow[]) {
+  function specificationPayload(targetProductId: string, rows: SpecificationRow[]): SpecificationPayloadRow[] {
     const validRows = rows
-      .map((row, index) => ({ product_id: targetProductId, label: row.label.trim(), value: row.value.trim(), sort_order: index }))
+      .map((row) => ({ label: row.label.trim(), value: row.value.trim() }))
       .filter((row) => row.label || row.value)
 
     if (validRows.some((row) => !row.label || !row.value)) {
       throw new Error('Each specification needs both a label and a value, or remove the incomplete row.')
     }
+    return validRows.map((row, sort_order) => ({ ...row, product_id: targetProductId, sort_order }))
+  }
 
+  function describeSpecificationError(error: unknown, productSaved: boolean) {
+    const supabaseError = error as SupabaseError
+    console.error('[Hydro Blasters MNL] product_specifications save failed:', {
+      message: supabaseError?.message,
+      code: supabaseError?.code,
+      details: supabaseError?.details,
+      hint: supabaseError?.hint,
+    })
+    const prefix = productSaved ? 'Product saved, but specifications could not be saved. ' : 'Specifications could not be saved. '
+    if (supabaseError?.code === 'PGRST205') return `${prefix}Specifications table is not configured yet. Run the required Supabase migration, then retry.`
+    if (supabaseError?.code === '42501') return `${prefix}Permission was denied. An authorized administrator needs access to product specifications.`
+    return `${prefix}${supabaseError?.message || 'Please try again after checking the Supabase specifications setup.'}`
+  }
+
+  async function saveSpecificationRows(targetProductId: string, rows: SpecificationRow[], replaceExisting: boolean) {
+    const validRows = specificationPayload(targetProductId, rows)
+    if (!replaceExisting && validRows.length === 0) return
     const { error: deleteError } = await supabase.from('product_specifications').delete().eq('product_id', targetProductId)
-    if (deleteError) throw deleteError
+    if (deleteError) {
+      console.error('[Hydro Blasters MNL] product_specifications delete failed:', deleteError)
+      throw deleteError
+    }
     if (validRows.length === 0) return
 
     const { error: insertError } = await supabase.from('product_specifications').insert(validRows)
-    if (insertError) throw insertError
+    if (insertError) {
+      console.error('[Hydro Blasters MNL] product_specifications insert failed:', insertError)
+      throw insertError
+    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -169,25 +196,20 @@ export function ProductForm({ mode }: ProductFormProps) {
       return
     }
 
+    // Validate rows before making any database change so incomplete entries do
+    // not create a misleading partial product save.
+    try {
+      specificationPayload(productId ?? 'pending-product-id', specificationRows)
+    } catch (specificationError) {
+      setError(specificationError instanceof Error ? specificationError.message : 'Check the specification rows and try again.')
+      return
+    }
+
     setIsSaving(true)
     setUploadProgress(imageFiles.length ? { completed: 0, total: imageFiles.length } : null)
 
     try {
-      const createdSlug = mode === 'add' ? await uniqueSlugForCreate(normalizedSlug) : null
-      const uploadProductId = productId ?? crypto.randomUUID()
-      const uploadedImageUrls: string[] = imageFiles.length
-        ? await uploadProductImages({
-          files: imageFiles,
-          productId: uploadProductId,
-          onProgress: (completed, total) => setUploadProgress({ completed, total }),
-        })
-        : []
-      if (imageFiles.length > 0 && uploadedImageUrls.length === 0) {
-        throw new Error('Your images uploaded, but no public image URLs were returned. The product was not saved.')
-      }
-      if (uploadedImageUrls.length !== imageFiles.length) {
-        throw new Error('Not every selected image returned a public URL. The product was not saved.')
-      }
+      const isExistingProduct = Boolean(productId)
       const productPayload = {
         name: values.name.trim(),
         brand: values.brand.trim() || null,
@@ -198,32 +220,65 @@ export function ProductForm({ mode }: ProductFormProps) {
         short_description: values.shortDescription.trim() || null,
         description: values.description.trim() || null,
         specifications: {},
-        image_urls: uploadedImageUrls,
+        image_urls: [],
         featured: values.featured,
         is_active: values.isActive,
       }
 
-      if (mode === 'add') {
-        console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', productPayload.image_urls)
+      if (!isExistingProduct) {
+        const createdSlug = await uniqueSlugForCreate(normalizedSlug)
         const { data, error: insertError } = await supabase
           .from('products')
-          .insert({ ...productPayload, slug: createdSlug, id: uploadProductId })
+          .insert({ ...productPayload, slug: createdSlug })
           .select('id,name,slug,brand,category,price,stock,status,featured,is_active,image_urls')
           .single()
-        if (insertError) throw insertError
-        const savedUrls: string[] = Array.isArray(data?.image_urls) ? data.image_urls : []
-        if (uploadedImageUrls.length > 0 && (savedUrls.length === 0 || savedUrls.length !== uploadedImageUrls.length || savedUrls.some((url, index) => url !== uploadedImageUrls[index]))) {
-          throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
+        if (insertError || !data) {
+          console.error('[Hydro Blasters MNL] products insert failed:', insertError)
+          throw insertError ?? new Error('The product could not be created.')
         }
-        await saveSpecificationRows(data.id, specificationRows)
+        setProductId(data.id)
+
+        let savedProduct = data
+        let uploadedImageUrls: string[] = []
+        if (imageFiles.length > 0) {
+          uploadedImageUrls = await uploadProductImages({
+            files: imageFiles,
+            productId: data.id,
+            onProgress: (completed, total) => setUploadProgress({ completed, total }),
+          })
+          if (uploadedImageUrls.length !== imageFiles.length) throw new Error('Product saved, but not every selected image returned a public URL. Please retry the image upload.')
+          console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', uploadedImageUrls)
+          const { data: imageUpdatedProduct, error: imageUpdateError } = await supabase
+            .from('products')
+            .update({ image_urls: uploadedImageUrls, updated_at: new Date().toISOString() })
+            .eq('id', data.id)
+            .select('id,name,slug,brand,category,price,stock,status,featured,is_active,image_urls')
+            .single()
+          if (imageUpdateError || !imageUpdatedProduct) throw imageUpdateError ?? new Error('Product saved, but its image URLs could not be saved.')
+          savedProduct = imageUpdatedProduct
+        }
+        setExistingImageUrls(uploadedImageUrls)
+        setLoadedImageUrls(uploadedImageUrls)
+        setImageFiles([])
+        try {
+          await saveSpecificationRows(data.id, specificationRows, false)
+        } catch (specificationError) {
+          setError(describeSpecificationError(specificationError, true))
+          return
+        }
         markWebsiteChangesUnpublished()
-        window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: data, updatedAt: Date.now() }))
+        window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: savedProduct, updatedAt: Date.now() }))
         window.dispatchEvent(new Event('hydro-products-updated'))
         router.push('/admin/products?created=1')
         router.refresh()
         return
       }
 
+      const uploadProductId = productId as string
+      const uploadedImageUrls = imageFiles.length
+        ? await uploadProductImages({ files: imageFiles, productId: uploadProductId, onProgress: (completed, total) => setUploadProgress({ completed, total }) })
+        : []
+      if (imageFiles.length > 0 && uploadedImageUrls.length !== imageFiles.length) throw new Error('Not every selected image returned a public URL. The product was not saved.')
       const remainingExistingImageUrls = [...existingImageUrls]
       const finalImageUrls = [
         ...remainingExistingImageUrls,
@@ -259,7 +314,15 @@ export function ProductForm({ mode }: ProductFormProps) {
       if (savedUrls.length !== finalImageUrls.length || savedUrls.some((url, index) => url !== finalImageUrls[index])) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
-      await saveSpecificationRows(productId as string, specificationRows)
+      try {
+        await saveSpecificationRows(productId as string, specificationRows, true)
+      } catch (specificationError) {
+        setExistingImageUrls(finalImageUrls)
+        setLoadedImageUrls(finalImageUrls)
+        setImageFiles([])
+        setError(describeSpecificationError(specificationError, true))
+        return
+      }
       await deleteProductImages(removedImageUrls)
       setSlug(data.slug)
       markWebsiteChangesUnpublished()
