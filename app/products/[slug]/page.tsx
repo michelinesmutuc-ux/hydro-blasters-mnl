@@ -22,10 +22,18 @@ export default async function ProductPage({ params: paramsPromise }: { params: P
   const params = await paramsPromise
   const { data, error } = await supabase
     .from('products')
-    .select('id,name,slug,brand,category,price,stock,status,short_description,description,specifications,image_urls')
+    .select('id,name,slug,brand,category,price,stock,status,short_description,description,image_urls')
     .eq('slug', params.slug)
     .eq('is_active', true)
     .maybeSingle()
+  const { data: specificationRows } = data
+    ? await supabase
+      .from('product_specifications')
+      .select('id,label,value,sort_order')
+      .eq('product_id', data.id)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true })
+    : { data: [] }
   return (
     <div className="site-shell">
       <div className="announcement"><span aria-hidden="true" />STORE INFORMATION COMING SOON</div>
@@ -34,7 +42,7 @@ export default async function ProductPage({ params: paramsPromise }: { params: P
         <nav aria-label="Primary navigation"><a href="/shop">Shop</a><a href="/#categories">Categories</a><a href="/#about">About</a></nav>
         <div className="header-actions"><button className="icon-button" type="button" aria-label="Search">⌕</button><button className="icon-button" type="button" aria-label="Cart">⌑ <span className="cart-count">0</span></button></div>
       </header>
-      <main><ProductDetails product={data as Product | null} error={error?.message} /></main>
+      <main><ProductDetails product={data as Product | null} specificationRows={specificationRows ?? []} error={error?.message} /></main>
       <footer><div className="footer-brand"><img src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span>Hydro Blasters MNL</span></div><div className="footer-links"><div><h3>Contact</h3><p>Information not yet provided</p></div><div><h3>Social links</h3><p>Information not yet provided</p></div><div><h3>Store policies</h3><p>Information not yet provided</p></div><div><h3>Showroom</h3><p>Information not yet provided</p></div></div></footer>
     </div>
   )

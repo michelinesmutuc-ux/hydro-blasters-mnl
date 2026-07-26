@@ -97,7 +97,7 @@ export function ProductsTable() {
       if (sourceError || !source) throw sourceError ?? new Error('The product could not be found.')
       const newSlug = await nextCopySlug(source.slug)
       const duplicate: ProductForDuplicate = { ...source, id: product.id }
-      const { error: insertError } = await supabase.from('products').insert({
+      const { data: copiedProduct, error: insertError } = await supabase.from('products').insert({
         name: `${duplicate.name} (Copy)`,
         slug: newSlug,
         brand: duplicate.brand,
@@ -111,8 +111,20 @@ export function ProductsTable() {
         image_urls: duplicate.image_urls,
         featured: duplicate.featured,
         is_active: duplicate.is_active,
-      })
-      if (insertError) throw insertError
+      }).select('id').single()
+      if (insertError || !copiedProduct) throw insertError ?? new Error('The duplicate product could not be created.')
+      const { data: sourceSpecifications, error: specificationReadError } = await supabase
+        .from('product_specifications')
+        .select('label,value,sort_order')
+        .eq('product_id', product.id)
+        .order('sort_order', { ascending: true })
+      if (specificationReadError) throw specificationReadError
+      if (sourceSpecifications?.length) {
+        const { error: specificationInsertError } = await supabase.from('product_specifications').insert(
+          sourceSpecifications.map((row) => ({ ...row, product_id: copiedProduct.id })),
+        )
+        if (specificationInsertError) throw specificationInsertError
+      }
       markWebsiteChangesUnpublished()
       setNotice('Product duplicated successfully.')
       await loadProducts()

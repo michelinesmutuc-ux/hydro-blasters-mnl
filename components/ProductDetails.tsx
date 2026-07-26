@@ -14,9 +14,9 @@ export type Product = {
   status: 'draft' | 'in_stock' | 'out_of_stock' | 'preorder'
   short_description: string | null
   description: string | null
-  specifications: Record<string, unknown>
   image_urls?: string[]
 }
+export type ProductSpecification = { id: string; label: string; value: string; sort_order: number }
 
 function statusLabel(status: Product['status']) {
   return status.replaceAll('_', ' ')
@@ -26,7 +26,7 @@ function ProductUnavailable() {
   return <section className="section product-unavailable"><p className="eyebrow">Product unavailable</p><h1>This product is not available</h1><p>The product may no longer exist or is not currently active.</p><a className="primary-button" href="/shop">Return to shop</a></section>
 }
 
-export function ProductDetails({ product, error }: { product: Product | null; error?: string | null }) {
+export function ProductDetails({ product, specificationRows = [], error }: { product: Product | null; specificationRows?: ProductSpecification[]; error?: string | null }) {
   const [selectedImage, setSelectedImage] = useState(0)
 
   useEffect(() => {
@@ -41,8 +41,8 @@ export function ProductDetails({ product, error }: { product: Product | null; er
 
   const firstImage = product.image_urls?.[0] ?? null
   const mainImage = product.image_urls?.[selectedImage] ?? firstImage
-  const specificationEntries = Object.entries(product.specifications ?? {})
   const productImages = product.image_urls ?? []
+  const descriptionParagraphs = product.description?.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean) ?? []
 
   return (
     <section className="section product-detail">
@@ -58,8 +58,8 @@ export function ProductDetails({ product, error }: { product: Product | null; er
           <p className="product-price">{product.price}</p>
           <dl className="product-detail-meta"><div><dt>Brand</dt><dd>{product.brand || 'Not specified'}</dd></div><div><dt>Stock</dt><dd>{product.stock}</dd></div><div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div><div><dt>Pre-order</dt><dd>{product.status === 'preorder' ? 'Available' : 'Not available'}</dd></div></dl>
           {product.short_description && <p className="product-short-description">{product.short_description}</p>}
-          {product.description && <div className="product-description"><h2>Description</h2><p>{product.description}</p></div>}
-          {specificationEntries.length > 0 && <div className="product-specifications"><h2>Specifications</h2><dl>{specificationEntries.map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : JSON.stringify(value)}</dd></div>)}</dl></div>}
+          {descriptionParagraphs.length > 0 && <div className="product-description"><h2>Description</h2>{descriptionParagraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
+          {specificationRows.length > 0 && <section className="product-specifications"><h2>Specifications</h2><dl>{specificationRows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl></section>}
         </div>
       </div>
     </section>

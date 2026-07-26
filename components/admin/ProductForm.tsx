@@ -9,6 +9,7 @@ import { ProductImageUploader } from './ProductImageUploader'
 import styles from './admin.module.css'
 
 type ProductFormProps = { mode: 'add' | 'edit' }
+type SpecificationRow = { id: string; label: string; value: string }
 
 const statusOptions = [
   { value: 'draft', label: 'Draft' },
@@ -24,7 +25,11 @@ function slugify(value: string) {
 }
 
 function initialValues() {
-  return { name: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shortDescription: '', description: '', specifications: '', featured: false, isActive: false }
+  return { name: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shortDescription: '', description: '', featured: false, isActive: false }
+}
+
+function newSpecificationRow(): SpecificationRow {
+  return { id: crypto.randomUUID(), label: '', value: '' }
 }
 
 export function ProductForm({ mode }: ProductFormProps) {
@@ -40,6 +45,7 @@ export function ProductForm({ mode }: ProductFormProps) {
   const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number } | null>(null)
   const [productId, setProductId] = useState<string | null>(null)
   const [isLoadingProduct, setIsLoadingProduct] = useState(mode === 'edit')
+  const [specificationRows, setSpecificationRows] = useState<SpecificationRow[]>([])
 
   useEffect(() => {
     if (mode !== 'edit') return
@@ -51,7 +57,7 @@ export function ProductForm({ mode }: ProductFormProps) {
     }
 
     async function loadProduct() {
-      const { data, error: loadError } = await supabase.from('products').select('id,name,slug,brand,category,price,stock,status,short_description,description,specifications,featured,is_active,image_urls').eq('id', id).single()
+      const { data, error: loadError } = await supabase.from('products').select('id,name,slug,brand,category,price,stock,status,short_description,description,featured,is_active,image_urls').eq('id', id).single()
       if (loadError || !data) {
         setError(loadError?.message ?? 'The product could not be found.')
         setIsLoadingProduct(false)
@@ -67,10 +73,20 @@ export function ProductForm({ mode }: ProductFormProps) {
         status: data.status,
         shortDescription: data.short_description ?? '',
         description: data.description ?? '',
-        specifications: JSON.stringify(data.specifications ?? {}, null, 2),
         featured: data.featured,
         isActive: data.is_active,
       })
+      const { data: specificationData, error: specificationError } = await supabase
+        .from('product_specifications')
+        .select('id,label,value,sort_order')
+        .eq('product_id', data.id)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true })
+      if (specificationError) {
+        setError(`The product loaded, but its specifications could not be loaded. ${specificationError.message}`)
+      } else {
+        setSpecificationRows((specificationData ?? []).map((row) => ({ id: row.id, label: row.label, value: row.value })))
+      }
       setSlug(data.slug)
       const existingUrls = Array.isArray(data.image_urls) ? data.image_urls : []
       setExistingImageUrls(existingUrls)
@@ -102,21 +118,41 @@ export function ProductForm({ mode }: ProductFormProps) {
     }
   }
 
+  function updateSpecificationRow(id: string, field: 'label' | 'value', value: string) {
+    setSpecificationRows((current) => current.map((row) => row.id === id ? { ...row, [field]: value } : row))
+  }
+
+  function moveSpecificationRow(index: number, direction: -1 | 1) {
+    setSpecificationRows((current) => {
+      const nextIndex = index + direction
+      if (nextIndex < 0 || nextIndex >= current.length) return current
+      const next = [...current]
+      const [row] = next.splice(index, 1)
+      next.splice(nextIndex, 0, row)
+      return next
+    })
+  }
+
+  async function saveSpecificationRows(targetProductId: string, rows: SpecificationRow[]) {
+    const validRows = rows
+      .map((row, index) => ({ product_id: targetProductId, label: row.label.trim(), value: row.value.trim(), sort_order: index }))
+      .filter((row) => row.label || row.value)
+
+    if (validRows.some((row) => !row.label || !row.value)) {
+      throw new Error('Each specification needs both a label and a value, or remove the incomplete row.')
+    }
+
+    const { error: deleteError } = await supabase.from('product_specifications').delete().eq('product_id', targetProductId)
+    if (deleteError) throw deleteError
+    if (validRows.length === 0) return
+
+    const { error: insertError } = await supabase.from('product_specifications').insert(validRows)
+    if (insertError) throw insertError
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
-    let specificationsObject: Record<string, unknown> = {}
-    if (values.specifications.trim()) {
-      try {
-        const parsed: unknown = JSON.parse(values.specifications)
-        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error()
-        specificationsObject = parsed as Record<string, unknown>
-      } catch {
-        setError('Product specifications must be a valid JSON object.')
-        return
-      }
-    }
-
     const normalizedSlug = slug
       .trim()
       .toLowerCase()
@@ -161,7 +197,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         status: values.status,
         short_description: values.shortDescription.trim() || null,
         description: values.description.trim() || null,
-        specifications: specificationsObject,
+        specifications: {},
         image_urls: uploadedImageUrls,
         featured: values.featured,
         is_active: values.isActive,
@@ -179,6 +215,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         if (uploadedImageUrls.length > 0 && (savedUrls.length === 0 || savedUrls.length !== uploadedImageUrls.length || savedUrls.some((url, index) => url !== uploadedImageUrls[index]))) {
           throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
         }
+        await saveSpecificationRows(data.id, specificationRows)
         markWebsiteChangesUnpublished()
         window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: data, updatedAt: Date.now() }))
         window.dispatchEvent(new Event('hydro-products-updated'))
@@ -202,7 +239,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         status: values.status,
         short_description: values.shortDescription.trim() || null,
         description: values.description.trim() || null,
-        specifications: specificationsObject,
+        specifications: {},
         image_urls: finalImageUrls,
         featured: values.featured,
         is_active: values.isActive,
@@ -222,6 +259,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       if (savedUrls.length !== finalImageUrls.length || savedUrls.some((url, index) => url !== finalImageUrls[index])) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
+      await saveSpecificationRows(productId as string, specificationRows)
       await deleteProductImages(removedImageUrls)
       setSlug(data.slug)
       markWebsiteChangesUnpublished()
@@ -258,8 +296,15 @@ export function ProductForm({ mode }: ProductFormProps) {
           </div>
           <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="short-description">Short Description</label><textarea id="short-description" value={values.shortDescription} onChange={(event) => update('shortDescription', event.target.value)} placeholder="Short product description" /></div>
           <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="description">Full Description</label><textarea id="description" value={values.description} onChange={(event) => update('description', event.target.value)} placeholder="Full product description" /></div>
-          <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="specifications">Product Specifications</label><textarea id="specifications" value={values.specifications} onChange={(event) => update('specifications', event.target.value)} placeholder='Optional JSON object, for example { "color": "black" }' /><span className={styles.slugHint}>Leave blank to save an empty JSON object.</span></div>
         </div>
+      </section>
+      <section className={styles.formSection}>
+        <div className={styles.specificationHeader}><div><h2>Specifications</h2><p>Add structured product details. Their displayed order is saved.</p></div><button className={styles.secondaryButton} type="button" onClick={() => setSpecificationRows((current) => [...current, newSpecificationRow()])} disabled={isSaving}>Add specification</button></div>
+        {specificationRows.length === 0 ? <p className={styles.specificationEmpty}>No specifications added yet.</p> : <div className={styles.specificationList}>{specificationRows.map((row, index) => <div className={styles.specificationRow} key={row.id}>
+          <div className={styles.field}><label htmlFor={`specification-label-${row.id}`}>Specification label</label><input id={`specification-label-${row.id}`} value={row.label} onChange={(event) => updateSpecificationRow(row.id, 'label', event.target.value)} placeholder="Body" disabled={isSaving} /></div>
+          <div className={styles.field}><label htmlFor={`specification-value-${row.id}`}>Specification value</label><input id={`specification-value-${row.id}`} value={row.value} onChange={(event) => updateSpecificationRow(row.id, 'value', event.target.value)} placeholder="Nylon material" disabled={isSaving} /></div>
+          <div className={styles.specificationActions}><button type="button" className={styles.rowAction} onClick={() => moveSpecificationRow(index, -1)} disabled={isSaving || index === 0} aria-label={`Move ${row.label || 'specification'} up`}>↑</button><button type="button" className={styles.rowAction} onClick={() => moveSpecificationRow(index, 1)} disabled={isSaving || index === specificationRows.length - 1} aria-label={`Move ${row.label || 'specification'} down`}>↓</button><button type="button" className={`${styles.rowAction} ${styles.rowDelete}`} onClick={() => setSpecificationRows((current) => current.filter((currentRow) => currentRow.id !== row.id))} disabled={isSaving}>Remove</button></div>
+        </div>)}</div>}
       </section>
       <section className={styles.formSection}><h2>Product images</h2><ProductImageUploader files={imageFiles} onFilesChange={setImageFiles} existingImageUrls={existingImageUrls} onExistingImageUrlsChange={setExistingImageUrls} disabled={isSaving} progress={uploadProgress} /></section>
       <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => router.push('/admin/products')}>Cancel</button><button type="submit" className={styles.primaryButton} disabled={isSaving}>{isSaving ? 'Saving…' : mode === 'add' ? 'Save product' : 'Save changes'}</button></div>
