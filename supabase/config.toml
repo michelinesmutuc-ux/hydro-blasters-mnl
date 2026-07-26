@@ -1,0 +1,2 @@
+[functions.publish-website]
+verify_jwt = true
