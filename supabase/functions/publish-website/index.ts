@@ -16,22 +16,31 @@ Deno.serve(async (request) => {
   if (request.method !== 'POST') return response({ error: 'Method not allowed.' }, 405)
 
   const authorization = request.headers.get('Authorization')
-  if (!authorization?.startsWith('Bearer ')) return response({ error: 'Authentication is required.' }, 401)
+  if (!authorization) return response({ error: 'Missing Authorization header. Sign in and try again.' }, 401)
+  if (!authorization.startsWith('Bearer ')) return response({ error: 'Invalid Authorization header.' }, 401)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')
   const deployHook = Deno.env.get('CLOUDFLARE_PAGES_DEPLOY_HOOK')
-  if (!supabaseUrl || !supabaseAnonKey || !deployHook) {
-    console.error('Publishing function is not configured.')
-    return response({ error: 'Publishing is not configured yet.' }, 500)
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('Publishing function authentication is not configured.')
+    return response({ error: 'Publishing function authentication is not configured.' }, 500)
+  }
+  if (!deployHook) {
+    console.error('Cloudflare Pages deploy hook is missing.')
+    return response({ error: 'Cloudflare deploy-hook secret is missing.' }, 500)
   }
 
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: authorization } },
   })
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  const accessToken = authorization.slice('Bearer '.length)
+  const { data: { user }, error: userError } = await supabase.auth.getUser(accessToken)
 
-  if (userError || !user) return response({ error: 'Authentication is required.' }, 401)
+  if (userError || !user) {
+    console.error('Publish authentication failed:', userError?.message)
+    return response({ error: 'Access token is invalid or expired.' }, 401)
+  }
   if (user.app_metadata?.role !== 'admin') return response({ error: 'You are not authorized to publish the website.' }, 403)
 
   try {

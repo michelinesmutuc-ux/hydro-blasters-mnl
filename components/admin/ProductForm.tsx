@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
 import { deleteProductImages, uploadProductImages } from '../../lib/supabase/product-images'
 import { markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
+import { requireAdminSession } from '../../lib/admin/auth'
 import { ProductImageUploader } from './ProductImageUploader'
 import styles from './admin.module.css'
 
@@ -160,6 +161,18 @@ export function ProductForm({ mode }: ProductFormProps) {
     return `${prefix}${supabaseError?.message || 'Please try again after checking the Supabase specifications setup.'}`
   }
 
+  function describeProductSaveError(error: unknown) {
+    const supabaseError = error as SupabaseError
+    console.error('[Hydro Blasters MNL] product save failed:', {
+      message: supabaseError?.message,
+      code: supabaseError?.code,
+      details: supabaseError?.details,
+      hint: supabaseError?.hint,
+    })
+    if (supabaseError?.code === '42501') return 'Database permission denied (42501). Your signed-in session did not satisfy the administrator RLS policy.'
+    return supabaseError?.message || 'The product could not be saved. Please try again.'
+  }
+
   async function saveSpecificationRows(targetProductId: string, rows: SpecificationRow[], replaceExisting: boolean) {
     const validRows = specificationPayload(targetProductId, rows)
     if (!replaceExisting && validRows.length === 0) return
@@ -209,6 +222,7 @@ export function ProductForm({ mode }: ProductFormProps) {
     setUploadProgress(imageFiles.length ? { completed: 0, total: imageFiles.length } : null)
 
     try {
+      await requireAdminSession()
       const isExistingProduct = Boolean(productId)
       const productPayload = {
         name: values.name.trim(),
@@ -331,7 +345,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       router.push('/admin/products?updated=1')
       router.refresh()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'The product could not be saved. Please try again.')
+      setError(describeProductSaveError(saveError))
     } finally {
       setIsSaving(false)
       setUploadProgress(null)

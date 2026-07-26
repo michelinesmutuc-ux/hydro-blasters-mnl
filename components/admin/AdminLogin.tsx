@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
+import { requireAdminSession } from '../../lib/admin/auth'
 import styles from './admin.module.css'
 
 function safeAdminPath(value: string | null) {
@@ -21,13 +22,14 @@ export function AdminLogin() {
   useEffect(() => {
     let isMounted = true
     async function checkExistingSession() {
-      const { data, error: userError } = await supabase.auth.getUser()
       if (!isMounted) return
-      if (!userError && data.user?.app_metadata?.role === 'admin') {
+      try {
+        await requireAdminSession()
         router.replace(safeAdminPath(searchParams.get('next')))
         return
+      } catch {
+        setIsCheckingSession(false)
       }
-      setIsCheckingSession(false)
     }
     checkExistingSession()
     return () => { isMounted = false }
@@ -44,8 +46,9 @@ export function AdminLogin() {
       return
     }
 
-    const { data: verifiedUser, error: userError } = await supabase.auth.getUser()
-    if (userError || verifiedUser.user?.app_metadata?.role !== 'admin') {
+    try {
+      await requireAdminSession()
+    } catch {
       await supabase.auth.signOut()
       setError('This account is not authorized to access the admin portal.')
       setIsSigningIn(false)

@@ -1,2 +1,2 @@
 [functions.publish-website]
-verify_jwt = true
+verify_jwt = false

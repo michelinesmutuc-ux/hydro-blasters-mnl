@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase/client'
 import { deleteProductImages } from '../../lib/supabase/product-images'
 import { markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
+import { requireAdminSession } from '../../lib/admin/auth'
 import styles from './admin.module.css'
 
 type Product = {
@@ -93,6 +94,7 @@ export function ProductsTable() {
     setError(null)
     setNotice(null)
     try {
+      await requireAdminSession()
       const { data: source, error: sourceError } = await supabase.from('products').select('name,slug,brand,category,price,stock,status,short_description,description,specifications,image_urls,featured,is_active').eq('id', product.id).single()
       if (sourceError || !source) throw sourceError ?? new Error('The product could not be found.')
       const newSlug = await nextCopySlug(source.slug)
@@ -141,6 +143,7 @@ export function ProductsTable() {
     setError(null)
     setNotice(null)
     try {
+      await requireAdminSession()
       const { error: deleteError } = await supabase
         .from('products')
         .delete()
@@ -172,6 +175,15 @@ export function ProductsTable() {
     setWorkingToggle({ id: product.id, field })
     setError(null)
     setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id ? { ...currentProduct, [field]: nextValue } : currentProduct))
+
+    try {
+      await requireAdminSession()
+    } catch (authError) {
+      setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id ? { ...currentProduct, [field]: previousValue } : currentProduct))
+      setError(authError instanceof Error ? authError.message : 'Administrator access is required.')
+      setWorkingToggle(null)
+      return
+    }
 
     const { error: updateError } = await supabase
       .from('products')

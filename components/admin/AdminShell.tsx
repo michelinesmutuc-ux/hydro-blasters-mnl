@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
+import { requireAdminSession } from '../../lib/admin/auth'
+import { AdminDebugPanel } from './AdminDebugPanel'
 import styles from './admin.module.css'
 
 type AdminShellProps = {
@@ -19,15 +21,14 @@ export function AdminShell({ active, children }: AdminShellProps) {
   useEffect(() => {
     let isMounted = true
     async function verifyAdmin() {
-      const { data, error } = await supabase.auth.getUser()
       if (!isMounted) return
-      if (error || !data.user) {
-        router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`)
-        return
-      }
-      if (data.user.app_metadata?.role !== 'admin') {
-        await supabase.auth.signOut()
-        if (isMounted) router.replace('/admin/login?reason=unauthorized')
+      try {
+        await requireAdminSession()
+      } catch (error) {
+        const reason = error instanceof Error && error.message.includes('administrator role') ? 'unauthorized' : ''
+        if (reason) await supabase.auth.signOut()
+        if (!isMounted) return
+        router.replace(reason ? '/admin/login?reason=unauthorized' : `/admin/login?next=${encodeURIComponent(pathname)}`)
         return
       }
       setIsAuthorized(true)
@@ -64,6 +65,7 @@ export function AdminShell({ active, children }: AdminShellProps) {
       </aside>
       <main className={styles.main}>
         <div className={styles.topbar}><div><p>Hydro Blasters MNL</p><strong>Admin dashboard</strong></div><div className={styles.topbarActions}><button type="button" className={styles.signOutButton} onClick={signOut}>Sign out</button><button type="button" className={styles.menuButton} aria-label="Admin navigation">☰</button></div></div>
+        <AdminDebugPanel />
         {children}
       </main>
     </div>
