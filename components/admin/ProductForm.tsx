@@ -151,6 +151,20 @@ export function ProductForm({ mode }: ProductFormProps) {
     return validRows.map((row, sort_order) => ({ ...row, product_id: targetProductId, sort_order }))
   }
 
+  function specificationRowsFromSubmittedForm(form: HTMLFormElement) {
+    const formData = new FormData(form)
+    const rows = specificationRowsRef.current.map((row) => ({
+      ...row,
+      // FormData is read from the live inputs, so Save captures text that is
+      // still focused and has not yet been committed by a React render.
+      label: String(formData.get(`specification-label-${row.id}`) ?? ''),
+      value: String(formData.get(`specification-value-${row.id}`) ?? ''),
+    }))
+    specificationRowsRef.current = rows
+    setSpecificationRows(rows)
+    return rows
+  }
+
   function describeSpecificationError(error: unknown, productSaved: boolean) {
     const supabaseError = error as SupabaseError
     console.error('[Hydro Blasters MNL] product_specifications save failed:', {
@@ -179,7 +193,7 @@ export function ProductForm({ mode }: ProductFormProps) {
 
   async function saveSpecificationRows(targetProductId: string, rows: SpecificationRow[], replaceExisting: boolean) {
     const validRows = specificationPayload(targetProductId, rows)
-    console.log('[Hydro Blasters MNL] Specifications payload sent to Supabase:', validRows)
+    console.log('[Hydro Blasters MNL] Payload rows at save click:', validRows.length, validRows.map((row) => ({ label: row.label, value: row.value, sort_order: row.sort_order })))
     if (!replaceExisting && validRows.length === 0) return
     const { data: deletedRows, error: deleteError } = await supabase.from('product_specifications').delete().eq('product_id', targetProductId).select('id')
     if (deleteError) {
@@ -206,7 +220,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       console.error('[Hydro Blasters MNL] product_specifications insert failed:', insertError)
       throw insertError
     }
-    console.log('[Hydro Blasters MNL] Specification rows written:', insertedRows ?? [])
+    console.log('[Hydro Blasters MNL] Rows saved to Supabase:', (insertedRows ?? []).length, insertedRows ?? [])
     if ((insertedRows ?? []).length !== validRows.length) {
       throw new Error('Supabase did not return every inserted specification row. The catalogue was not marked ready to publish.')
     }
@@ -225,6 +239,8 @@ export function ProductForm({ mode }: ProductFormProps) {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
+    const submittedSpecificationRows = specificationRowsFromSubmittedForm(event.currentTarget)
+    console.log('[Hydro Blasters MNL] Visible rows before save:', submittedSpecificationRows.length)
     const normalizedSlug = slug
       .trim()
       .toLowerCase()
@@ -244,7 +260,7 @@ export function ProductForm({ mode }: ProductFormProps) {
     // Validate rows before making any database change so incomplete entries do
     // not create a misleading partial product save.
     try {
-      specificationPayload(productId ?? 'pending-product-id', specificationRowsRef.current)
+      specificationPayload(productId ?? 'pending-product-id', submittedSpecificationRows)
     } catch (specificationError) {
       setError(specificationError instanceof Error ? specificationError.message : 'Check the specification rows and try again.')
       return
@@ -255,8 +271,7 @@ export function ProductForm({ mode }: ProductFormProps) {
     setUploadProgress(imageFiles.length ? { completed: 0, total: imageFiles.length } : null)
 
     try {
-      const submittedSpecificationRows = specificationRowsRef.current
-      console.log('[Hydro Blasters MNL] Current specification array at Save click:', submittedSpecificationRows)
+      console.log('[Hydro Blasters MNL] Payload labels and values:', submittedSpecificationRows.map((row) => ({ label: row.label, value: row.value })))
       await requireAdminSession()
       const isExistingProduct = Boolean(productId)
       const productPayload = {
@@ -414,8 +429,8 @@ export function ProductForm({ mode }: ProductFormProps) {
       <section className={styles.formSection}>
         <div className={styles.specificationHeader}><div><h2>Specifications</h2><p>Add structured product details. Their displayed order is saved.</p></div><button className={styles.secondaryButton} type="button" onClick={() => { const next = [...specificationRowsRef.current, newSpecificationRow()]; specificationRowsRef.current = next; setSpecificationRows(next) }} disabled={isSaving}>Add specification</button></div>
         {specificationRows.length === 0 ? <p className={styles.specificationEmpty}>No specifications added yet.</p> : <div className={styles.specificationList}>{specificationRows.map((row, index) => <div className={styles.specificationRow} key={row.id}>
-          <div className={styles.field}><label htmlFor={`specification-label-${row.id}`}>Specification label</label><input id={`specification-label-${row.id}`} value={row.label} onChange={(event) => updateSpecificationRow(row.id, 'label', event.target.value)} placeholder="Body" disabled={isSaving} /></div>
-          <div className={styles.field}><label htmlFor={`specification-value-${row.id}`}>Specification value</label><input id={`specification-value-${row.id}`} value={row.value} onChange={(event) => updateSpecificationRow(row.id, 'value', event.target.value)} placeholder="Nylon material" disabled={isSaving} /></div>
+          <div className={styles.field}><label htmlFor={`specification-label-${row.id}`}>Specification label</label><input id={`specification-label-${row.id}`} name={`specification-label-${row.id}`} value={row.label} onChange={(event) => updateSpecificationRow(row.id, 'label', event.target.value)} placeholder="Body" disabled={isSaving} /></div>
+          <div className={styles.field}><label htmlFor={`specification-value-${row.id}`}>Specification value</label><input id={`specification-value-${row.id}`} name={`specification-value-${row.id}`} value={row.value} onChange={(event) => updateSpecificationRow(row.id, 'value', event.target.value)} placeholder="Nylon material" disabled={isSaving} /></div>
           <div className={styles.specificationActions}><button type="button" className={styles.rowAction} onClick={() => moveSpecificationRow(index, -1)} disabled={isSaving || index === 0} aria-label={`Move ${row.label || 'specification'} up`}>↑</button><button type="button" className={styles.rowAction} onClick={() => moveSpecificationRow(index, 1)} disabled={isSaving || index === specificationRows.length - 1} aria-label={`Move ${row.label || 'specification'} down`}>↓</button><button type="button" className={`${styles.rowAction} ${styles.rowDelete}`} onClick={() => { const next = specificationRowsRef.current.filter((currentRow) => currentRow.id !== row.id); specificationRowsRef.current = next; setSpecificationRows(next) }} disabled={isSaving}>Remove</button></div>
         </div>)}</div>}
       </section>
