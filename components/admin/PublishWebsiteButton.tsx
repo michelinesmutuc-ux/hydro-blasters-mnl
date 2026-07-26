@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase/client'
 import { requireAdminSession } from '../../lib/admin/auth'
-import { hasUnpublishedWebsiteChanges, markWebsiteChangesPublished, WEBSITE_PUBLICATION_NEEDED_EVENT } from '../../lib/admin/publishing'
+import { hasUnpublishedWebsiteChanges, isCatalogueWritePending, markWebsiteChangesPublished, WEBSITE_PUBLICATION_NEEDED_EVENT } from '../../lib/admin/publishing'
 import styles from './admin.module.css'
 
 export function PublishWebsiteButton() {
@@ -32,6 +32,8 @@ export function PublishWebsiteButton() {
     setError(null)
 
     try {
+      if (isCatalogueWritePending()) throw new Error('Product changes are still saving. Wait for Save to finish before publishing.')
+      console.log('[Hydro Blasters MNL] Publish started:', new Date().toISOString())
       const session = await requireAdminSession()
       const { error: invokeError } = await supabase.functions.invoke('publish-website', {
         body: {},
