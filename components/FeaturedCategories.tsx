@@ -1,14 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase/client'
+import { fetchActiveProducts } from '../lib/supabase/products'
 
 export function FeaturedCategories() {
   const [categories, setCategories] = useState<string[]>([])
 
   useEffect(() => {
     async function loadCategories() {
-      const { data } = await supabase.from('products').select('category').eq('is_active', true)
+      const { data } = await fetchActiveProducts()
       const uniqueCategories = Array.from(new Set((data ?? []).map((product) => product.category).filter(Boolean)))
       setCategories(uniqueCategories)
     }

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
 import { deleteProductImages, uploadProductImages } from '../../lib/supabase/product-images'
+import { fetchAdminProduct, findAvailableProductSlug } from '../../lib/supabase/products'
+import { fetchProductSpecifications, normalizeSpecificationRows, replaceProductSpecifications } from '../../lib/supabase/product-specifications'
 import { markCatalogueWriteComplete, markCatalogueWritePending, markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
 import { ProductImageUploader } from './ProductImageUploader'
@@ -11,7 +13,6 @@ import styles from './admin.module.css'
 
 type ProductFormProps = { mode: 'add' | 'edit' }
 type SpecificationRow = { id: string; label: string; value: string }
-type SpecificationPayloadRow = { product_id: string; label: string; value: string; sort_order: number }
 type SupabaseError = { message?: string; code?: string; details?: string | null; hint?: string | null }
 
 const statusOptions = [
@@ -61,7 +62,7 @@ export function ProductForm({ mode }: ProductFormProps) {
     }
 
     async function loadProduct() {
-      const { data, error: loadError } = await supabase.from('products').select('id,name,slug,brand,category,price,stock,status,short_description,description,featured,is_active,image_urls').eq('id', id).single()
+      const { data, error: loadError } = await fetchAdminProduct(id as string)
       if (loadError || !data) {
         setError(loadError?.message ?? 'The product could not be found.')
         setIsLoadingProduct(false)
@@ -80,12 +81,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         featured: data.featured,
         isActive: data.is_active,
       })
-      const { data: specificationData, error: specificationError } = await supabase
-        .from('product_specifications')
-        .select('id,label,value,sort_order')
-        .eq('product_id', data.id)
-        .order('sort_order', { ascending: true })
-        .order('created_at', { ascending: true })
+      const { data: specificationData, error: specificationError } = await fetchProductSpecifications(data.id)
       if (specificationError) {
         setError(`The product loaded, but its specifications could not be loaded. ${specificationError.message}`)
       } else {
@@ -111,19 +107,6 @@ export function ProductForm({ mode }: ProductFormProps) {
     if (mode === 'add' && !slugEdited) setSlug(slugify(name))
   }
 
-  async function uniqueSlugForCreate(baseSlug: string) {
-    let candidate = baseSlug
-    let suffix = 2
-
-    while (true) {
-      const { data, error: slugError } = await supabase.from('products').select('id').eq('slug', candidate).limit(1)
-      if (slugError) throw slugError
-      if (!data?.length) return candidate
-      candidate = `${baseSlug}-${suffix}`
-      suffix += 1
-    }
-  }
-
   function updateSpecificationRow(id: string, field: 'label' | 'value', value: string) {
     const next = specificationRowsRef.current.map((row) => row.id === id ? { ...row, [field]: value } : row)
     specificationRowsRef.current = next
@@ -138,20 +121,6 @@ export function ProductForm({ mode }: ProductFormProps) {
     next.splice(nextIndex, 0, row)
     specificationRowsRef.current = next
     setSpecificationRows(next)
-  }
-
-  function specificationPayload(targetProductId: string, rows: SpecificationRow[]): SpecificationPayloadRow[] {
-    const normalizedRows = rows.map((row, index) => ({
-      label: row.label.trim(),
-      value: row.value.trim(),
-      sort_order: index,
-    }))
-    const validRows = normalizedRows.filter((row) => row.label !== '' || row.value !== '')
-
-    if (validRows.some((row) => !row.label || !row.value)) {
-      throw new Error('Each specification needs both a label and a value, or remove the incomplete row.')
-    }
-    return validRows.map((row, sort_order) => ({ ...row, product_id: targetProductId, sort_order }))
   }
 
   function specificationRowsFromSubmittedForm(form: HTMLFormElement) {
@@ -197,51 +166,6 @@ export function ProductForm({ mode }: ProductFormProps) {
     return supabaseError?.message || 'The product could not be saved. Please try again.'
   }
 
-  async function saveSpecificationRows(saveAttemptId: string, targetProductId: string, rows: SpecificationRow[], replaceExisting: boolean) {
-    const validRows = specificationPayload(targetProductId, rows)
-    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'C. rows sent to Supabase', rows: validRows })
-    if (!replaceExisting && validRows.length === 0) return
-    const { data: deletedRows, error: deleteError } = await supabase.from('product_specifications').delete().eq('product_id', targetProductId).select('id')
-    if (deleteError) {
-      console.error('[Hydro Blasters MNL] product_specifications delete failed:', deleteError)
-      throw deleteError
-    }
-    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'delete result', rows: deletedRows ?? [] })
-    if (validRows.length === 0) {
-      const { data: persistedRows, error: persistedRowsError } = await supabase
-        .from('product_specifications')
-        .select('id,product_id,label,value,sort_order')
-        .eq('product_id', targetProductId)
-      if (persistedRowsError) throw persistedRowsError
-      console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'D. immediate database readback', rows: persistedRows ?? [] })
-      if ((persistedRows ?? []).length > 0) throw new Error('Supabase did not remove every specification row. The catalogue was not marked ready to publish.')
-      return
-    }
-
-    const { data: insertedRows, error: insertError } = await supabase
-      .from('product_specifications')
-      .insert(validRows)
-      .select('id,product_id,label,value,sort_order')
-    if (insertError) {
-      console.error('[Hydro Blasters MNL] product_specifications insert failed:', insertError)
-      throw insertError
-    }
-    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'insert result', rows: insertedRows ?? [] })
-    if ((insertedRows ?? []).length !== validRows.length) {
-      throw new Error('Supabase did not return every inserted specification row. The catalogue was not marked ready to publish.')
-    }
-    const { data: persistedRows, error: persistedRowsError } = await supabase
-      .from('product_specifications')
-      .select('id,product_id,label,value,sort_order')
-      .eq('product_id', targetProductId)
-      .order('sort_order', { ascending: true })
-    if (persistedRowsError) throw persistedRowsError
-    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'D. immediate database readback', rows: persistedRows ?? [] })
-    if ((persistedRows ?? []).length !== validRows.length || (persistedRows ?? []).some((row, index) => row.label !== validRows[index].label || row.value !== validRows[index].value || row.sort_order !== validRows[index].sort_order)) {
-      throw new Error('Supabase did not return the exact specification rows that were submitted. The catalogue was not marked ready to publish.')
-    }
-  }
-
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
@@ -269,7 +193,7 @@ export function ProductForm({ mode }: ProductFormProps) {
     // Validate rows before making any database change so incomplete entries do
     // not create a misleading partial product save.
     try {
-      specificationPayload(productId ?? 'pending-product-id', submittedSpecificationRows)
+      normalizeSpecificationRows(submittedSpecificationRows)
     } catch (specificationError) {
       setError(specificationError instanceof Error ? specificationError.message : 'Check the specification rows and try again.')
       return
@@ -298,7 +222,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       }
 
       if (!isExistingProduct) {
-        const createdSlug = await uniqueSlugForCreate(normalizedSlug)
+        const createdSlug = await findAvailableProductSlug(normalizedSlug)
         const { data, error: insertError } = await supabase
           .from('products')
           .insert({ ...productPayload, slug: createdSlug })
@@ -333,7 +257,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         setLoadedImageUrls(uploadedImageUrls)
         setImageFiles([])
         try {
-          await saveSpecificationRows(saveAttemptId, data.id, submittedSpecificationRows, false)
+          await replaceProductSpecifications(data.id, submittedSpecificationRows, saveAttemptId)
         } catch (specificationError) {
           setError(describeSpecificationError(specificationError, true))
           return
@@ -387,7 +311,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
       try {
-        await saveSpecificationRows(saveAttemptId, productId as string, submittedSpecificationRows, true)
+        await replaceProductSpecifications(productId as string, submittedSpecificationRows, saveAttemptId)
       } catch (specificationError) {
         setExistingImageUrls(finalImageUrls)
         setLoadedImageUrls(finalImageUrls)

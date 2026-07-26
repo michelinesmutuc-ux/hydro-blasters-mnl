@@ -1,5 +1,7 @@
 import { ProductDetails, type Product } from '../../../components/ProductDetails'
 import { supabase } from '../../../lib/supabase/client'
+import { fetchActiveProductBySlug } from '../../../lib/supabase/products'
+import { fetchProductSpecifications } from '../../../lib/supabase/product-specifications'
 
 export const dynamicParams = false
 
@@ -20,19 +22,9 @@ export async function generateStaticParams() {
 
 export default async function ProductPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
   const params = await paramsPromise
-  const { data, error } = await supabase
-    .from('products')
-    .select('id,name,slug,brand,category,price,stock,status,short_description,description,image_urls')
-    .eq('slug', params.slug)
-    .eq('is_active', true)
-    .maybeSingle()
+  const { data, error } = await fetchActiveProductBySlug(params.slug)
   const { data: specificationRows } = data
-    ? await supabase
-      .from('product_specifications')
-      .select('id,label,value,sort_order')
-      .eq('product_id', data.id)
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: true })
+    ? await fetchProductSpecifications(data.id)
     : { data: [] }
   return (
     <div className="site-shell">

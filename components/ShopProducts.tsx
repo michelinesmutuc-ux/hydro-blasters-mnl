@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { supabase } from '../lib/supabase/client'
+import { fetchActiveProducts } from '../lib/supabase/products'
 import { ProductCard, type PublicProduct } from './ProductCard'
 
 type SortOption = 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'name-asc'
@@ -56,10 +56,7 @@ export function ShopProducts() {
   }, [])
 
   const loadProducts = useCallback(async () => {
-    const { data, error: queryError } = await supabase
-      .from('products')
-      .select('id,name,slug,brand,category,price,stock,status,image_urls,featured,created_at,short_description')
-      .eq('is_active', true)
+    const { data, error: queryError } = await fetchActiveProducts()
 
     if (queryError) setError(queryError.message)
     else {

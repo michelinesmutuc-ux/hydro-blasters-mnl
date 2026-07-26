@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase/client'
 import { deleteProductImages } from '../../lib/supabase/product-images'
+import { fetchAdminProducts, findAvailableProductSlug } from '../../lib/supabase/products'
+import { fetchProductSpecifications, replaceProductSpecifications } from '../../lib/supabase/product-specifications'
 import { markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
 import styles from './admin.module.css'
@@ -44,7 +46,7 @@ export function ProductsTable() {
 
   const loadProducts = useCallback(async () => {
     setLoading(true)
-    const { data, error: queryError } = await supabase.from('products').select('id,name,brand,category,price,stock,status,featured,is_active,image_urls').order('created_at', { ascending: false })
+    const { data, error: queryError } = await fetchAdminProducts()
     if (queryError) setError(queryError.message)
     else {
       setProducts((data ?? []) as Product[])
@@ -76,19 +78,6 @@ export function ProductsTable() {
     }
   }, [loadProducts])
 
-  async function nextCopySlug(sourceSlug: string) {
-    const baseSlug = `${sourceSlug}-copy`
-    let candidate = baseSlug
-    let copyNumber = 2
-    while (true) {
-      const { data, error: queryError } = await supabase.from('products').select('id').eq('slug', candidate).limit(1)
-      if (queryError) throw queryError
-      if (!data?.length) return candidate
-      candidate = `${baseSlug}-${copyNumber}`
-      copyNumber += 1
-    }
-  }
-
   async function duplicateProduct(product: Product) {
     setWorkingId(product.id)
     setError(null)
@@ -97,7 +86,7 @@ export function ProductsTable() {
       await requireAdminSession()
       const { data: source, error: sourceError } = await supabase.from('products').select('name,slug,brand,category,price,stock,status,short_description,description,specifications,image_urls,featured,is_active').eq('id', product.id).single()
       if (sourceError || !source) throw sourceError ?? new Error('The product could not be found.')
-      const newSlug = await nextCopySlug(source.slug)
+      const newSlug = await findAvailableProductSlug(`${source.slug}-copy`)
       const duplicate: ProductForDuplicate = { ...source, id: product.id }
       const { data: copiedProduct, error: insertError } = await supabase.from('products').insert({
         name: `${duplicate.name} (Copy)`,
@@ -115,17 +104,10 @@ export function ProductsTable() {
         is_active: duplicate.is_active,
       }).select('id').single()
       if (insertError || !copiedProduct) throw insertError ?? new Error('The duplicate product could not be created.')
-      const { data: sourceSpecifications, error: specificationReadError } = await supabase
-        .from('product_specifications')
-        .select('label,value,sort_order')
-        .eq('product_id', product.id)
-        .order('sort_order', { ascending: true })
+      const { data: sourceSpecifications, error: specificationReadError } = await fetchProductSpecifications(product.id)
       if (specificationReadError) throw specificationReadError
       if (sourceSpecifications?.length) {
-        const { error: specificationInsertError } = await supabase.from('product_specifications').insert(
-          sourceSpecifications.map((row) => ({ ...row, product_id: copiedProduct.id })),
-        )
-        if (specificationInsertError) throw specificationInsertError
+        await replaceProductSpecifications(copiedProduct.id, sourceSpecifications)
       }
       markWebsiteChangesUnpublished()
       setNotice('Product duplicated successfully.')

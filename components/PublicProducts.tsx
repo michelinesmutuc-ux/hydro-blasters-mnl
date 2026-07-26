@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase/client'
+import { fetchActiveProducts } from '../lib/supabase/products'
 import { ProductCard, type PublicProduct } from './ProductCard'
 
 type PublicProductsProps = { featuredOnly?: boolean }
@@ -12,14 +12,7 @@ export function PublicProducts({ featuredOnly = false }: PublicProductsProps) {
   const [error, setError] = useState<string | null>(null)
 
   const loadProducts = useCallback(async () => {
-    const { data, error: queryError } = await (() => {
-      let query = supabase
-        .from('products')
-        .select('id,name,slug,brand,category,price,stock,status,image_urls')
-        .eq('is_active', true)
-      if (featuredOnly) query = query.eq('featured', true)
-      return query.order('created_at', { ascending: false })
-    })()
+    const { data, error: queryError } = await fetchActiveProducts({ featuredOnly })
 
     if (queryError) setError(queryError.message)
     else {
