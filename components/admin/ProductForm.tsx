@@ -148,9 +148,6 @@ export function ProductForm({ mode }: ProductFormProps) {
     }))
     const validRows = normalizedRows.filter((row) => row.label !== '' || row.value !== '')
 
-    console.log('[Hydro Blasters MNL] Visible specification rows:', normalizedRows)
-    console.log('[Hydro Blasters MNL] Filtered valid rows:', validRows)
-
     if (validRows.some((row) => !row.label || !row.value)) {
       throw new Error('Each specification needs both a label and a value, or remove the incomplete row.')
     }
@@ -158,14 +155,17 @@ export function ProductForm({ mode }: ProductFormProps) {
   }
 
   function specificationRowsFromSubmittedForm(form: HTMLFormElement) {
-    const formData = new FormData(form)
-    const rows = specificationRowsRef.current.map((row) => ({
-      ...row,
-      // FormData is read from the live inputs, so Save captures text that is
-      // still focused and has not yet been committed by a React render.
-      label: String(formData.get(`specification-label-${row.id}`) ?? ''),
-      value: String(formData.get(`specification-value-${row.id}`) ?? ''),
-    }))
+    // This deliberately reads the rendered inputs—not React state or a ref.
+    // It is the exact form snapshot visible to the administrator at submit.
+    const rows = Array.from(form.querySelectorAll<HTMLElement>('[data-specification-row]')).map((element, index) => {
+      const labelInput = element.querySelector<HTMLInputElement>('[data-specification-label]')
+      const valueInput = element.querySelector<HTMLInputElement>('[data-specification-value]')
+      return {
+        id: element.dataset.specificationId ?? `submitted-row-${index}`,
+        label: labelInput?.value ?? '',
+        value: valueInput?.value ?? '',
+      }
+    })
     specificationRowsRef.current = rows
     setSpecificationRows(rows)
     return rows
@@ -197,23 +197,23 @@ export function ProductForm({ mode }: ProductFormProps) {
     return supabaseError?.message || 'The product could not be saved. Please try again.'
   }
 
-  async function saveSpecificationRows(targetProductId: string, rows: SpecificationRow[], replaceExisting: boolean) {
+  async function saveSpecificationRows(saveAttemptId: string, targetProductId: string, rows: SpecificationRow[], replaceExisting: boolean) {
     const validRows = specificationPayload(targetProductId, rows)
-    console.log('[Hydro Blasters MNL] Rows sent to Supabase:', validRows)
+    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'C. rows sent to Supabase', rows: validRows })
     if (!replaceExisting && validRows.length === 0) return
     const { data: deletedRows, error: deleteError } = await supabase.from('product_specifications').delete().eq('product_id', targetProductId).select('id')
     if (deleteError) {
       console.error('[Hydro Blasters MNL] product_specifications delete failed:', deleteError)
       throw deleteError
     }
-    console.log('[Hydro Blasters MNL] Specification rows removed:', deletedRows ?? [])
+    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'delete result', rows: deletedRows ?? [] })
     if (validRows.length === 0) {
       const { data: persistedRows, error: persistedRowsError } = await supabase
         .from('product_specifications')
         .select('id,product_id,label,value,sort_order')
         .eq('product_id', targetProductId)
       if (persistedRowsError) throw persistedRowsError
-      console.log('[Hydro Blasters MNL] Specification rows returned after save:', persistedRows ?? [])
+      console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'D. immediate database readback', rows: persistedRows ?? [] })
       if ((persistedRows ?? []).length > 0) throw new Error('Supabase did not remove every specification row. The catalogue was not marked ready to publish.')
       return
     }
@@ -226,7 +226,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       console.error('[Hydro Blasters MNL] product_specifications insert failed:', insertError)
       throw insertError
     }
-    console.log('[Hydro Blasters MNL] Rows saved to Supabase:', (insertedRows ?? []).length, insertedRows ?? [])
+    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'insert result', rows: insertedRows ?? [] })
     if ((insertedRows ?? []).length !== validRows.length) {
       throw new Error('Supabase did not return every inserted specification row. The catalogue was not marked ready to publish.')
     }
@@ -236,7 +236,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       .eq('product_id', targetProductId)
       .order('sort_order', { ascending: true })
     if (persistedRowsError) throw persistedRowsError
-    console.log('[Hydro Blasters MNL] Specification rows returned after save:', persistedRows ?? [])
+    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'D. immediate database readback', rows: persistedRows ?? [] })
     if ((persistedRows ?? []).length !== validRows.length || (persistedRows ?? []).some((row, index) => row.label !== validRows[index].label || row.value !== validRows[index].value || row.sort_order !== validRows[index].sort_order)) {
       throw new Error('Supabase did not return the exact specification rows that were submitted. The catalogue was not marked ready to publish.')
     }
@@ -245,8 +245,11 @@ export function ProductForm({ mode }: ProductFormProps) {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
-    const submittedSpecificationRows = specificationRowsFromSubmittedForm(event.currentTarget)
-    console.log('[Hydro Blasters MNL] Visible rows before save:', submittedSpecificationRows.length)
+    const saveAttemptId = crypto.randomUUID()
+    const visibleSpecificationRows = specificationRowsFromSubmittedForm(event.currentTarget)
+    const submittedSpecificationRows = visibleSpecificationRows.map((row) => ({ ...row }))
+    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'A. visible/form rows', rows: visibleSpecificationRows })
+    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'B. submit-handler rows', rows: submittedSpecificationRows })
     const normalizedSlug = slug
       .trim()
       .toLowerCase()
@@ -277,7 +280,6 @@ export function ProductForm({ mode }: ProductFormProps) {
     setUploadProgress(imageFiles.length ? { completed: 0, total: imageFiles.length } : null)
 
     try {
-      console.log('[Hydro Blasters MNL] Payload labels and values:', submittedSpecificationRows.map((row) => ({ label: row.label, value: row.value })))
       await requireAdminSession()
       const isExistingProduct = Boolean(productId)
       const productPayload = {
@@ -331,7 +333,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         setLoadedImageUrls(uploadedImageUrls)
         setImageFiles([])
         try {
-          await saveSpecificationRows(data.id, submittedSpecificationRows, false)
+          await saveSpecificationRows(saveAttemptId, data.id, submittedSpecificationRows, false)
         } catch (specificationError) {
           setError(describeSpecificationError(specificationError, true))
           return
@@ -385,7 +387,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
       try {
-        await saveSpecificationRows(productId as string, submittedSpecificationRows, true)
+        await saveSpecificationRows(saveAttemptId, productId as string, submittedSpecificationRows, true)
       } catch (specificationError) {
         setExistingImageUrls(finalImageUrls)
         setLoadedImageUrls(finalImageUrls)
@@ -434,9 +436,9 @@ export function ProductForm({ mode }: ProductFormProps) {
       </section>
       <section className={styles.formSection}>
         <div className={styles.specificationHeader}><div><h2>Specifications</h2><p>Add structured product details. Their displayed order is saved.</p></div><button className={styles.secondaryButton} type="button" onClick={() => { const next = [...specificationRowsRef.current, newSpecificationRow()]; specificationRowsRef.current = next; setSpecificationRows(next) }} disabled={isSaving}>Add specification</button></div>
-        {specificationRows.length === 0 ? <p className={styles.specificationEmpty}>No specifications added yet.</p> : <div className={styles.specificationList}>{specificationRows.map((row, index) => <div className={styles.specificationRow} key={row.id}>
-          <div className={styles.field}><label htmlFor={`specification-label-${row.id}`}>Specification label</label><input id={`specification-label-${row.id}`} name={`specification-label-${row.id}`} value={row.label} onChange={(event) => updateSpecificationRow(row.id, 'label', event.target.value)} placeholder="Body" disabled={isSaving} /></div>
-          <div className={styles.field}><label htmlFor={`specification-value-${row.id}`}>Specification value</label><input id={`specification-value-${row.id}`} name={`specification-value-${row.id}`} value={row.value} onChange={(event) => updateSpecificationRow(row.id, 'value', event.target.value)} placeholder="Nylon material" disabled={isSaving} /></div>
+        {specificationRows.length === 0 ? <p className={styles.specificationEmpty}>No specifications added yet.</p> : <div className={styles.specificationList}>{specificationRows.map((row, index) => <div className={styles.specificationRow} data-specification-row data-specification-id={row.id} key={row.id}>
+          <div className={styles.field}><label htmlFor={`specification-label-${row.id}`}>Specification label</label><input id={`specification-label-${row.id}`} data-specification-label value={row.label} onChange={(event) => updateSpecificationRow(row.id, 'label', event.target.value)} placeholder="Body" disabled={isSaving} /></div>
+          <div className={styles.field}><label htmlFor={`specification-value-${row.id}`}>Specification value</label><input id={`specification-value-${row.id}`} data-specification-value value={row.value} onChange={(event) => updateSpecificationRow(row.id, 'value', event.target.value)} placeholder="Nylon material" disabled={isSaving} /></div>
           <div className={styles.specificationActions}><button type="button" className={styles.rowAction} onClick={() => moveSpecificationRow(index, -1)} disabled={isSaving || index === 0} aria-label={`Move ${row.label || 'specification'} up`}>↑</button><button type="button" className={styles.rowAction} onClick={() => moveSpecificationRow(index, 1)} disabled={isSaving || index === specificationRows.length - 1} aria-label={`Move ${row.label || 'specification'} down`}>↓</button><button type="button" className={`${styles.rowAction} ${styles.rowDelete}`} onClick={() => { const next = specificationRowsRef.current.filter((currentRow) => currentRow.id !== row.id); specificationRowsRef.current = next; setSpecificationRows(next) }} disabled={isSaving}>Remove</button></div>
         </div>)}</div>}
       </section>
