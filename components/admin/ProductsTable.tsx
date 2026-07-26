@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase/client'
 import { deleteProductImages } from '../../lib/supabase/product-images'
+import { markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import styles from './admin.module.css'
 
 type Product = {
@@ -53,8 +54,8 @@ export function ProductsTable() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('created') === '1') setNotice('Product saved successfully. Deploy the website before its product-detail URL becomes available.')
-    if (params.get('updated') === '1') setNotice('Product updated successfully.')
+    if (params.get('created') === '1') setNotice('Product saved successfully. ⚠️ You have unpublished website changes.')
+    if (params.get('updated') === '1') setNotice('Product updated successfully. ⚠️ You have unpublished website changes.')
     loadProducts()
     function refreshUpdatedProduct() {
       try {
@@ -112,6 +113,7 @@ export function ProductsTable() {
         is_active: duplicate.is_active,
       })
       if (insertError) throw insertError
+      markWebsiteChangesUnpublished()
       setNotice('Product duplicated successfully.')
       await loadProducts()
     } catch (duplicateError) {
@@ -132,6 +134,7 @@ export function ProductsTable() {
         .delete()
         .eq('id', product.id)
       if (deleteError) throw deleteError
+      markWebsiteChangesUnpublished()
       let cleanupWarning: string | null = null
       try {
         const { data: remainingProducts, error: remainingError } = await supabase.from('products').select('image_urls')
@@ -166,6 +169,8 @@ export function ProductsTable() {
     if (updateError) {
       setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id ? { ...currentProduct, [field]: previousValue } : currentProduct))
       setError(`Could not update ${field === 'is_active' ? 'Active' : 'Featured'} for ${product.name}. ${updateError.message}`)
+    } else {
+      markWebsiteChangesUnpublished()
     }
     setWorkingToggle(null)
   }

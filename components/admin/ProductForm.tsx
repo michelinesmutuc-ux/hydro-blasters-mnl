@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
 import { deleteProductImages, uploadProductImages } from '../../lib/supabase/product-images'
+import { markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { ProductImageUploader } from './ProductImageUploader'
 import styles from './admin.module.css'
 
@@ -88,10 +89,17 @@ export function ProductForm({ mode }: ProductFormProps) {
     if (mode === 'add' && !slugEdited) setSlug(slugify(name))
   }
 
-  async function validateUniqueSlug(slug: string, currentProductId: string | null) {
-    const { data, error: slugError } = await supabase.from('products').select('id').eq('slug', slug).limit(1)
-    if (slugError) throw slugError
-    if (data?.some((product) => product.id !== currentProductId)) throw new Error('This slug is already in use. Choose another unique slug before saving.')
+  async function uniqueSlugForCreate(baseSlug: string) {
+    let candidate = baseSlug
+    let suffix = 2
+
+    while (true) {
+      const { data, error: slugError } = await supabase.from('products').select('id').eq('slug', candidate).limit(1)
+      if (slugError) throw slugError
+      if (!data?.length) return candidate
+      candidate = `${baseSlug}-${suffix}`
+      suffix += 1
+    }
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -129,7 +137,7 @@ export function ProductForm({ mode }: ProductFormProps) {
     setUploadProgress(imageFiles.length ? { completed: 0, total: imageFiles.length } : null)
 
     try {
-      if (mode === 'add') await validateUniqueSlug(normalizedSlug, null)
+      const createdSlug = mode === 'add' ? await uniqueSlugForCreate(normalizedSlug) : null
       const uploadProductId = productId ?? crypto.randomUUID()
       const uploadedImageUrls: string[] = imageFiles.length
         ? await uploadProductImages({
@@ -146,7 +154,6 @@ export function ProductForm({ mode }: ProductFormProps) {
       }
       const productPayload = {
         name: values.name.trim(),
-        slug: normalizedSlug,
         brand: values.brand.trim() || null,
         category: values.category,
         price,
@@ -164,7 +171,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         console.log('[Hydro Blasters MNL] Final image_urls payload sent to Supabase:', productPayload.image_urls)
         const { data, error: insertError } = await supabase
           .from('products')
-          .insert({ ...productPayload, id: uploadProductId })
+          .insert({ ...productPayload, slug: createdSlug, id: uploadProductId })
           .select('id,name,slug,brand,category,price,stock,status,featured,is_active,image_urls')
           .single()
         if (insertError) throw insertError
@@ -172,6 +179,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         if (uploadedImageUrls.length > 0 && (savedUrls.length === 0 || savedUrls.length !== uploadedImageUrls.length || savedUrls.some((url, index) => url !== uploadedImageUrls[index]))) {
           throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
         }
+        markWebsiteChangesUnpublished()
         window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: data, updatedAt: Date.now() }))
         window.dispatchEvent(new Event('hydro-products-updated'))
         router.push('/admin/products?created=1')
@@ -216,6 +224,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       }
       await deleteProductImages(removedImageUrls)
       setSlug(data.slug)
+      markWebsiteChangesUnpublished()
       window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: data, updatedAt: Date.now() }))
       window.dispatchEvent(new Event('hydro-products-updated'))
       router.push('/admin/products?updated=1')
