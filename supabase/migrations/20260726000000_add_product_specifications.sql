@@ -125,8 +125,8 @@ create policy "Admins can delete product specifications"
   using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
 create policy "Only admins can manage product specifications"
-  as restrictive
   on public.product_specifications
+  as restrictive
   for all
   to authenticated
   using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')

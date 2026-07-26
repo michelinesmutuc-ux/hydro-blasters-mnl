@@ -17,8 +17,8 @@ create policy "Admins can manage products"
   with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 
 create policy "Only admins can manage products"
-  as restrictive
   on public.products
+  as restrictive
   for all
   to authenticated
   using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
@@ -46,8 +46,8 @@ create policy "Admins can manage product images"
   );
 
 create policy "Only admins can manage product images"
-  as restrictive
   on storage.objects
+  as restrictive
   for all
   to authenticated
   using (
