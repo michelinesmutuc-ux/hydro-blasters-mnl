@@ -1,15 +1,9 @@
 -- Retires the database-managed payment QR system. Product QR files move into
 -- public/payment-qrs/ in this Next.js project instead.
 alter table public.orders add column if not exists selected_payment_option_name text;
-drop policy if exists "Public reads enabled payment QR images" on storage.objects;
-drop policy if exists "Admins manage payment QR images" on storage.objects;
-drop policy if exists "Admins select payment QR images" on storage.objects;
-drop policy if exists "Admins insert payment QR images" on storage.objects;
-drop policy if exists "Admins update payment QR images" on storage.objects;
-drop policy if exists "Admins delete payment QR images" on storage.objects;
 
-delete from storage.objects where bucket_id = 'payment-qrs';
-delete from storage.buckets where id = 'payment-qrs';
+-- The old payment-qrs bucket has already been deleted manually in Supabase
+-- Storage. This migration deliberately makes no changes to storage.* tables.
 
 drop table if exists public.payment_method_options cascade;
 drop table if exists public.payment_settings cascade;
