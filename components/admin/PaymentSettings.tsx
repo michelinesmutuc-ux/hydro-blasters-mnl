@@ -9,6 +9,7 @@ type PaymentSetting = { id: string; method: PaymentMethod; display_name: string;
 type BankOption = { id: string; payment_method_id: string; name: string; masked_account_name: string; masked_account_number: string; qr_path: string; enabled: boolean; sort_order: number }
 type ParentDraft = { method: PaymentMethod; display_name: string; masked_account_name: string; masked_account_number: string; qr_path: string; enabled: boolean }
 type BankDraft = { id?: string; name: string; masked_account_name: string; masked_account_number: string; qr_path: string; enabled: boolean }
+type UploadDiagnostic = { bucket: string; path: string; operation: 'upload'; upsert: false; userId: string | null; role: string | null; errorCode?: string; errorMessage?: string }
 
 const parentDefaults: Record<PaymentMethod, ParentDraft> = {
   gcash: { method: 'gcash', display_name: 'GCash', masked_account_name: '', masked_account_number: '', qr_path: '', enabled: false },
@@ -30,6 +31,7 @@ export function PaymentSettings() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [uploadDiagnostic, setUploadDiagnostic] = useState<UploadDiagnostic | null>(null)
 
   const selectedParent = settings.find((setting) => setting.method === draft.method) ?? null
   const isBankTransfer = draft.method === 'bank_transfer'
@@ -64,8 +66,27 @@ export function PaymentSettings() {
 
   async function uploadQr(file: File, prefix: string) {
     const path = `settings/${prefix}-${crypto.randomUUID()}.${extensionFor(file)}`
+    const { data: { session } } = await supabase.auth.getSession()
+    const diagnostic: UploadDiagnostic = {
+      bucket: 'payment-qrs',
+      path,
+      operation: 'upload',
+      upsert: false,
+      userId: session?.user.id ?? null,
+      role: typeof session?.user.app_metadata.role === 'string' ? session.user.app_metadata.role : null,
+    }
+    console.info('[Hydro Blasters MNL] Payment QR upload', diagnostic)
+    if (!session) throw new Error('QR image upload failed: no active administrator session.')
+    if (diagnostic.role !== 'admin') throw new Error('QR image upload failed: the current session does not have the admin role.')
     const { error: uploadError } = await supabase.storage.from('payment-qrs').upload(path, file, { contentType: file.type, upsert: false })
-    if (uploadError) throw uploadError
+    if (uploadError) {
+      const storageError = uploadError as typeof uploadError & { statusCode?: string; error?: string }
+      const failedDiagnostic = { ...diagnostic, errorCode: storageError.statusCode ?? storageError.error ?? storageError.name, errorMessage: uploadError.message }
+      setUploadDiagnostic(failedDiagnostic)
+      console.error('[Hydro Blasters MNL] Payment QR upload failed', failedDiagnostic)
+      throw new Error(`QR image upload failed (${failedDiagnostic.errorCode}): ${failedDiagnostic.errorMessage}`)
+    }
+    setUploadDiagnostic(null)
     return path
   }
 
@@ -131,6 +152,7 @@ export function PaymentSettings() {
   const bankOptions = selectedParent ? options.filter((option) => option.payment_method_id === selectedParent.id) : []
   return <div className={styles.paymentSettings}>
     {message && <p className={styles.successMessage} role="status">{message}</p>}{error && <p className={styles.errorMessage} role="alert">{error}</p>}
+    {uploadDiagnostic && <details className={styles.uploadDiagnostic}><summary>Payment QR upload diagnostics</summary><p>Bucket: {uploadDiagnostic.bucket}<br />Object path: {uploadDiagnostic.path}<br />Operation: {uploadDiagnostic.operation} (upsert: false)<br />User ID: {uploadDiagnostic.userId ?? 'No active session'}<br />app_metadata.role: {uploadDiagnostic.role ?? 'Not set'}<br />Storage error: {uploadDiagnostic.errorCode ?? 'Unknown'} — {uploadDiagnostic.errorMessage ?? 'Unknown error'}</p></details>}
     <form className={styles.form} onSubmit={saveParent}><section className={styles.formSection}><div className={styles.fieldGrid}>
       <div className={styles.field}><label htmlFor="payment-method">Payment method</label><select id="payment-method" value={draft.method} onChange={(event) => chooseMethod(event.target.value as PaymentMethod)} disabled={saving}><option value="gcash">GCash</option><option value="bank_transfer">Bank transfer</option><option value="cash_on_delivery">Cash on Delivery upfront fee</option></select></div>
       <div className={styles.field}><label htmlFor="payment-name">Payment method name</label><input id="payment-name" value={draft.display_name} onChange={(event) => setDraft((current) => ({ ...current, display_name: event.target.value }))} disabled={saving} /></div>
