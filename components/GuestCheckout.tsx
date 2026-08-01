@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase/client'
 import { useCart } from './CartProvider'
@@ -9,6 +9,14 @@ import { getPaymentOption } from '../lib/payment-config'
 
 const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 const initial = { customer_name: '', mobile_number: '', house_unit: '', street: '', barangay: '', city_municipality: '', region: '', postal_code: '', order_notes: '' }
+type PaymentMethod = 'gcash' | 'bank_transfer' | 'cash_on_delivery' | 'pay_upon_pickup'
+
+const paymentMethods: { id: PaymentMethod; name: string; description: string }[] = [
+  { id: 'gcash', name: 'GCash', description: 'Pay instantly using the GCash QR.' },
+  { id: 'bank_transfer', name: 'Bank Transfer', description: 'Transfer using your preferred bank.' },
+  { id: 'cash_on_delivery', name: 'Cash on Delivery', description: 'Pay the merchandise amount upon delivery. Shipping and COD fees are paid in advance.' },
+  { id: 'pay_upon_pickup', name: 'Showroom Pickup', description: 'Reserve online and pay according to the selected pickup payment option.' },
+]
 
 async function fileToBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -24,7 +32,7 @@ export function GuestCheckout() {
   const router = useRouter()
   const [form, setForm] = useState(initial)
   const [delivery, setDelivery] = useState<'nationwide_delivery' | 'showroom_pickup'>('nationwide_delivery')
-  const [payment, setPayment] = useState('gcash')
+  const [payment, setPayment] = useState<PaymentMethod | null>(null)
   const [bankOptionId, setBankOptionId] = useState<string | null>(null)
   const [proof, setProof] = useState<File | null>(null)
   const [reservation, setReservation] = useState(false)
@@ -40,23 +48,36 @@ export function GuestCheckout() {
   const upfront = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : subtotal + shipping
   const proofNeeded = !pickup
 
-  useEffect(() => {
-    if (delivery === 'nationwide_delivery' && !['gcash', 'bank_transfer', 'cash_on_delivery'].includes(payment)) setPayment('gcash')
-    if (delivery === 'showroom_pickup' && !['gcash', 'bank_transfer', 'pay_upon_pickup'].includes(payment)) setPayment('gcash')
-  }, [delivery, payment])
-
   if (!lines.length) return <section className="section"><h1>Your cart is empty</h1></section>
 
   const update = (key: keyof typeof initial, value: string) => setForm((current) => ({ ...current, [key]: value }))
-  const selectPayment = (nextPayment: string) => {
+  const selectPayment = (nextPayment: PaymentMethod) => {
     setPayment(nextPayment)
     setBankOptionId(null)
+    setProof(null)
+    setCodConfirm(false)
+    setReservation(false)
     setQrAvailable(nextPayment === 'pay_upon_pickup')
+    setDelivery(nextPayment === 'pay_upon_pickup' ? 'showroom_pickup' : 'nationwide_delivery')
+  }
+  const changeDelivery = (nextDelivery: typeof delivery) => {
+    setDelivery(nextDelivery)
+    setPayment(null)
+    setBankOptionId(null)
+    setProof(null)
+    setQrAvailable(false)
+    setCodConfirm(false)
+    setReservation(false)
+  }
+  const selectBankOption = (nextBankOptionId: string | null) => {
+    setBankOptionId(nextBankOptionId)
+    setProof(null)
   }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     setError(null)
+    if (!payment) return setError('Please choose a payment method.')
     if (payment === 'bank_transfer' && !bankOptionId) return setError('Choose your bank before placing your order.')
     if (proofNeeded && !qrAvailable) return setError(payment === 'bank_transfer' ? 'Bank transfer is temporarily unavailable. Please choose another payment method.' : 'Payment details are temporarily unavailable. Please contact Hydro Blasters MNL before sending payment.')
     if (proofNeeded && !proof) return setError('A payment screenshot is required.')
@@ -99,18 +120,23 @@ export function GuestCheckout() {
           <label>Mobile Number <em>Required</em><input required value={form.mobile_number} onChange={(event) => update('mobile_number', event.target.value)} /></label>
         </div></section>
         <section className="checkout-card"><h2>Delivery</h2>
-          <label>Delivery Method <em>Required</em><select value={delivery} onChange={(event) => setDelivery(event.target.value as typeof delivery)}><option value="nationwide_delivery">Nationwide Delivery</option><option value="showroom_pickup">Showroom Pickup</option></select></label>
+          <label>Delivery Method <em>Required</em><select value={delivery} onChange={(event) => changeDelivery(event.target.value as typeof delivery)}><option value="nationwide_delivery">Nationwide Delivery</option><option value="showroom_pickup">Showroom Pickup</option></select></label>
           {delivery === 'nationwide_delivery' && <div className="checkout-grid">{(['house_unit', 'street', 'barangay', 'city_municipality', 'region', 'postal_code'] as const).map((key) => <label key={key}>{key.replaceAll('_', ' ')} <em>Required</em><input required value={form[key]} onChange={(event) => update(key, event.target.value)} /></label>)}</div>}
           <label>Order Notes <em>Optional</em><textarea value={form.order_notes} onChange={(event) => update('order_notes', event.target.value)} /></label>
         </section>
         <section className="checkout-card"><h2>Payment</h2>
-          <label>Payment Method <em>Required</em><select value={payment} onChange={(event) => selectPayment(event.target.value)}>{delivery === 'nationwide_delivery' ? <><option value="gcash">GCash</option><option value="bank_transfer">Bank transfer</option><option value="cash_on_delivery">Cash on Delivery</option></> : <><option value="gcash">GCash</option><option value="bank_transfer">Bank transfer</option><option value="pay_upon_pickup">Pay upon pickup</option></>}</select></label>
-          {proofNeeded && <PaymentQr method={payment} amount={upfront} bankOptionId={bankOptionId} onBankOptionChange={setBankOptionId} onAvailabilityChange={setQrAvailable} />}
-          {proofNeeded ? <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input required type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proof && <img src={URL.createObjectURL(proof)} alt="Payment screenshot preview" />}</div> : <label className="checkout-check"><input type="checkbox" checked={reservation} onChange={(event) => setReservation(event.target.checked)} /> I understand that this is only a reservation request and I must wait for Hydro Blasters MNL to confirm before visiting.</label>}
+          <p className="payment-choice-intro">Choose how you&apos;d like to pay.</p>
+          <div className="payment-methods" role="radiogroup" aria-label="Payment method">
+            {paymentMethods.map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.description}</small></span></button>)}
+          </div>
+          {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><div><span>Shipping fee</span><strong>{peso(shipping)}</strong></div><div><span>COD service fee</span><strong>{peso(codFee)}</strong></div><div><span>Amount payable upfront</span><strong>{peso(upfront)}</strong></div><div><span>Amount payable to rider</span><strong>{peso(subtotal)}</strong></div></div>}
+          {payment && proofNeeded && <PaymentQr method={payment} amount={upfront} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
+          {payment && proofNeeded && qrAvailable && <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input required type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proof && <img src={URL.createObjectURL(proof)} alt="Payment screenshot preview" />}</div>}
+          {payment === 'pay_upon_pickup' && <label className="checkout-check"><input type="checkbox" checked={reservation} onChange={(event) => setReservation(event.target.checked)} /> I understand that this is only a reservation request and I must wait for Hydro Blasters MNL to confirm before visiting.</label>}
           {payment === 'cash_on_delivery' && <label className="checkout-check"><input type="checkbox" checked={codConfirm} onChange={(event) => setCodConfirm(event.target.checked)} /> I understand that my COD order will only be processed after the shipping fee and COD service fee are paid and verified.</label>}
         </section>
       </div>
-      <aside className="checkout-summary"><h2>Order Summary</h2>{lines.map((line) => <p key={line.id}>{line.name} × {line.quantity} — {peso(Number(line.price) * line.quantity)}</p>)}<dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>Shipping</dt><dd>{peso(shipping)}</dd></div>{codFee > 0 && <div><dt>COD Fee</dt><dd>{peso(codFee)}</dd></div>}<div className="checkout-total"><dt>Total</dt><dd>{peso(subtotal + shipping + codFee)}</dd></div></dl><button className="secondary-button" disabled={saving || (proofNeeded && !qrAvailable) || (payment === 'bank_transfer' && !bankOptionId)} type="submit">{saving ? 'Placing order…' : 'Place Order'}</button></aside>
+      <aside className="checkout-summary"><h2>Order Summary</h2>{lines.map((line) => <p key={line.id}>{line.name} × {line.quantity} — {peso(Number(line.price) * line.quantity)}</p>)}<dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>Shipping</dt><dd>{peso(shipping)}</dd></div>{codFee > 0 && <div><dt>COD Fee</dt><dd>{peso(codFee)}</dd></div>}<div className="checkout-total"><dt>Total</dt><dd>{peso(subtotal + shipping + codFee)}</dd></div></dl><button className="secondary-button" disabled={saving || (payment !== null && proofNeeded && !qrAvailable) || (payment === 'bank_transfer' && !bankOptionId)} type="submit">{saving ? 'Placing order…' : 'Place Order'}</button></aside>
     </form>
   </section>
 }
