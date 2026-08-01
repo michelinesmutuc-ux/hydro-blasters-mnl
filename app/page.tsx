@@ -7,8 +7,9 @@ export default function Home() {
     <div className="site-shell">
       <div className="announcement"><span aria-hidden="true" />STORE INFORMATION COMING SOON</div>
       <header className="site-header">
-        <a className="brand" href="#top" aria-label="Hydro Blasters MNL home">
+        <a className="brand" href="#top" aria-label="Go to Home">
           <img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" />
+          <span className="brand-home-label" aria-hidden="true">Home</span>
         </a>
         <nav aria-label="Primary navigation">
           <a href="/shop">Shop</a>

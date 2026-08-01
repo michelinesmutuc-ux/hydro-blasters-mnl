@@ -36,7 +36,7 @@ export default async function ProductPage({ params: paramsPromise }: { params: P
     <div className="site-shell">
       <div className="announcement"><span aria-hidden="true" />STORE INFORMATION COMING SOON</div>
       <header className="site-header">
-        <a className="brand" href="/" aria-label="Hydro Blasters MNL home"><img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /></a>
+        <a className="brand" href="/" aria-label="Go to Home"><img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span className="brand-home-label" aria-hidden="true">Home</span></a>
         <nav aria-label="Primary navigation"><a href="/shop">Shop</a><a href="/#categories">Categories</a><a href="/#about">About</a></nav>
         <div className="header-actions"><button className="icon-button" type="button" aria-label="Search">⌕</button><CartLink /></div>
       </header>
