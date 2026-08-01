@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ProductImageFrame } from './ProductImageFrame'
 
 export type Product = {
@@ -22,7 +22,6 @@ export type ProductSpecification = {
   value: string
   sort_order: number
   updated_at?: string
-  save_attempt_id?: string | null
 }
 
 function statusLabel(status: Product['status']) {
@@ -35,21 +34,6 @@ function ProductUnavailable() {
 
 export function ProductDetails({ product, specificationRows = [], error }: { product: Product | null; specificationRows?: ProductSpecification[]; error?: string | null }) {
   const [selectedImage, setSelectedImage] = useState(0)
-
-  useEffect(() => {
-    if (product) {
-      console.log(product)
-      console.log(product.image_urls)
-      console.log('[Hydro Blasters MNL] Specification save transaction', {
-        stage: 'F. product detail rendered rows',
-        slug: product.slug,
-        productId: product.id,
-        saveAttemptIds: specificationRows.map((row) => row.save_attempt_id ?? null),
-        rows: specificationRows,
-        renderedAt: new Date().toISOString(),
-      })
-    }
-  }, [product, specificationRows])
 
   if (error) return <section className="section"><div className="catalogue-state" role="alert">This product could not be loaded. Please try again later.</div></section>
   if (!product) return <ProductUnavailable />

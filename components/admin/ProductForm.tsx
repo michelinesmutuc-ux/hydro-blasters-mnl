@@ -186,11 +186,8 @@ export function ProductForm({ mode }: ProductFormProps) {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
-    const saveAttemptId = crypto.randomUUID()
     const visibleSpecificationRows = specificationRowsFromSubmittedForm(event.currentTarget)
     const submittedSpecificationRows = visibleSpecificationRows.map((row) => ({ ...row }))
-    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'A. visible/form rows', rows: visibleSpecificationRows })
-    console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'B. submit-handler rows', rows: submittedSpecificationRows })
     const normalizedSlug = newProductSlug
       .trim()
       .toLowerCase()
@@ -274,7 +271,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         setLoadedImageUrls(uploadedImageUrls)
         setImageFiles([])
         try {
-          await replaceProductSpecifications(data.id, submittedSpecificationRows, saveAttemptId)
+          await replaceProductSpecifications(data.id, submittedSpecificationRows)
         } catch (specificationError) {
           setError(describeSpecificationError(specificationError, true))
           return
@@ -328,7 +325,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
       try {
-        await replaceProductSpecifications(productId as string, submittedSpecificationRows, saveAttemptId)
+        await replaceProductSpecifications(productId as string, submittedSpecificationRows)
       } catch (specificationError) {
         setExistingImageUrls(finalImageUrls)
         setLoadedImageUrls(finalImageUrls)
