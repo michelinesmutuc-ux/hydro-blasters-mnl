@@ -53,12 +53,14 @@ export function ProductForm({ mode }: ProductFormProps) {
   const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number } | null>(null)
   const [productId, setProductId] = useState<string | null>(null)
   const [isLoadingProduct, setIsLoadingProduct] = useState(mode === 'edit')
+  const [duplicateSourceId, setDuplicateSourceId] = useState<string | null>(null)
   const [specificationRows, setSpecificationRows] = useState<SpecificationRow[]>([])
   const specificationRowsRef = useRef<SpecificationRow[]>([])
 
   useEffect(() => {
-    if (mode !== 'edit') return
-    const id = new URLSearchParams(window.location.search).get('id')
+    const params = new URLSearchParams(window.location.search)
+    const id = mode === 'edit' ? params.get('id') : params.get('duplicateFrom')
+    if (!id && mode === 'add') return
     if (!id) {
       setError('Choose a product from the Products list to edit it.')
       setIsLoadingProduct(false)
@@ -66,32 +68,47 @@ export function ProductForm({ mode }: ProductFormProps) {
     }
 
     async function loadProduct() {
+      if (mode === 'add') setIsLoadingProduct(true)
       const { data, error: loadError } = await fetchAdminProduct(id as string)
       if (loadError || !data) {
         setError(loadError?.message ?? 'The product could not be found.')
         setIsLoadingProduct(false)
         return
       }
-      setProductId(data.id)
+      const duplicateName = mode === 'add' ? `${data.name} (Copy)` : data.name
       const savedDraft = {
-        name: data.name,
+        name: duplicateName,
         brand: data.brand ?? '',
         category: data.category,
         price: String(data.price),
-        stock: String(data.stock),
+        stock: mode === 'add' ? '0' : String(data.stock),
         status: data.status,
         shortDescription: data.short_description ?? '',
         description: data.description ?? '',
         featured: data.featured,
-        isActive: data.is_active,
+        isActive: mode === 'add' ? false : data.is_active,
       }
-      savedDraftRef.current = { ...savedDraft }
+      if (mode === 'edit') {
+        setProductId(data.id)
+        savedDraftRef.current = { ...savedDraft }
+      } else {
+        setDuplicateSourceId(data.id)
+        setNewProductSlug(slugify(duplicateName))
+        setNewProductSlugEdited(false)
+        setExistingImageUrls([])
+        setLoadedImageUrls([])
+        setImageFiles([])
+      }
       setDraft({ ...savedDraft })
       const { data: specificationData, error: specificationError } = await fetchProductSpecifications(data.id)
       if (specificationError) {
-        setError(`The product loaded, but its specifications could not be loaded. ${specificationError.message}`)
+        setError(mode === 'add'
+          ? `The product could not be used as a template because its specifications could not be loaded. ${specificationError.message}`
+          : `The product loaded, but its specifications could not be loaded. ${specificationError.message}`)
+        setIsLoadingProduct(false)
+        return
       } else {
-        const rows = (specificationData ?? []).map((row) => ({ id: row.id, label: row.label, value: row.value }))
+        const rows = (specificationData ?? []).map((row) => ({ id: mode === 'add' ? crypto.randomUUID() : row.id, label: row.label, value: row.value }))
         specificationRowsRef.current = rows
         setSpecificationRows(rows)
       }
@@ -111,7 +128,7 @@ export function ProductForm({ mode }: ProductFormProps) {
     update('name', name)
     // A slug is generated only for a new, unsaved product. Existing product
     // URLs are permanent and an edit draft can never recalculate them.
-    if (mode === 'add' && !newProductSlugEdited) setNewProductSlug(slugify(name))
+    if (mode === 'add' && (duplicateSourceId || !newProductSlugEdited)) setNewProductSlug(slugify(name))
   }
 
   function discardDraft() {
@@ -357,7 +374,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         <h2>Product information</h2>
         <div className={styles.fieldGrid}>
           <div className={styles.field}><label htmlFor="product-name">Product Name</label><input id="product-name" required value={draft.name} onChange={(event) => handleNameChange(event.target.value)} placeholder="Enter product name" /></div>
-          {mode === 'add' && <div className={styles.field}><label htmlFor="product-slug">Slug</label><input id="product-slug" required value={newProductSlug} onChange={(event) => { setNewProductSlugEdited(true); setNewProductSlug(event.target.value) }} placeholder="product-slug" /><span className={styles.slugHint}>Generated from the product name. You can edit it before saving.</span></div>}
+          {mode === 'add' && <div className={styles.field}><label htmlFor="product-slug">Slug</label><input id="product-slug" required value={newProductSlug} onChange={(event) => { setNewProductSlugEdited(true); setNewProductSlug(event.target.value) }} placeholder="product-slug" /><span className={styles.slugHint}>{duplicateSourceId ? 'Temporary slug generated from the duplicate name. It becomes permanent after the first save.' : 'Generated from the product name. You can edit it before saving.'}</span></div>}
           <div className={styles.field}><label htmlFor="brand">Brand</label><input id="brand" value={draft.brand} onChange={(event) => update('brand', event.target.value)} placeholder="Brand name" /></div>
           <div className={styles.field}><label htmlFor="category">Category</label><select id="category" required value={draft.category} onChange={(event) => update('category', event.target.value)}><option value="" disabled>Select a category</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
           <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={draft.price} onChange={(event) => update('price', event.target.value)} /></div>

@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
 import { deleteProductImages } from '../../lib/supabase/product-images'
-import { fetchAdminProducts, findAvailableProductSlug } from '../../lib/supabase/products'
-import { fetchProductSpecifications, replaceProductSpecifications } from '../../lib/supabase/product-specifications'
+import { fetchAdminProducts } from '../../lib/supabase/products'
 import { markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
 import styles from './admin.module.css'
@@ -22,14 +22,6 @@ type Product = {
   image_urls: string[]
 }
 
-type ProductForDuplicate = Product & {
-  slug: string
-  short_description: string | null
-  description: string | null
-  specifications: Record<string, unknown>
-  is_active: boolean
-}
-
 const columns = ['Thumbnail', 'Product Name', 'Brand', 'Category', 'Price', 'Stock', 'Status', 'Active', 'Featured', 'Actions']
 
 function statusLabel(status: Product['status']) {
@@ -37,6 +29,7 @@ function statusLabel(status: Product['status']) {
 }
 
 export function ProductsTable() {
+  const router = useRouter()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -78,45 +71,8 @@ export function ProductsTable() {
     }
   }, [loadProducts])
 
-  async function duplicateProduct(product: Product) {
-    setWorkingId(product.id)
-    setError(null)
-    setNotice(null)
-    try {
-      await requireAdminSession()
-      const { data: source, error: sourceError } = await supabase.from('products').select('name,slug,brand,category,price,stock,status,short_description,description,specifications,image_urls,featured,is_active').eq('id', product.id).single()
-      if (sourceError || !source) throw sourceError ?? new Error('The product could not be found.')
-      const newSlug = await findAvailableProductSlug(`${source.slug}-copy`)
-      const duplicate: ProductForDuplicate = { ...source, id: product.id }
-      const { data: copiedProduct, error: insertError } = await supabase.from('products').insert({
-        name: `${duplicate.name} (Copy)`,
-        slug: newSlug,
-        brand: duplicate.brand,
-        category: duplicate.category,
-        price: duplicate.price,
-        stock: duplicate.stock,
-        status: duplicate.status,
-        short_description: duplicate.short_description,
-        description: duplicate.description,
-        specifications: duplicate.specifications,
-        image_urls: duplicate.image_urls,
-        featured: duplicate.featured,
-        is_active: duplicate.is_active,
-      }).select('id').single()
-      if (insertError || !copiedProduct) throw insertError ?? new Error('The duplicate product could not be created.')
-      const { data: sourceSpecifications, error: specificationReadError } = await fetchProductSpecifications(product.id)
-      if (specificationReadError) throw specificationReadError
-      if (sourceSpecifications?.length) {
-        await replaceProductSpecifications(copiedProduct.id, sourceSpecifications)
-      }
-      markWebsiteChangesUnpublished()
-      setNotice('Product duplicated successfully.')
-      await loadProducts()
-    } catch (duplicateError) {
-      setError(duplicateError instanceof Error ? duplicateError.message : 'The product could not be duplicated.')
-    } finally {
-      setWorkingId(null)
-    }
+  function duplicateProduct(product: Product) {
+    router.push(`/admin/products/new?duplicateFrom=${encodeURIComponent(product.id)}`)
   }
 
   async function deleteProduct(product: Product) {
