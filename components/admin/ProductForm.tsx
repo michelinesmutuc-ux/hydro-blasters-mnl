@@ -14,6 +14,7 @@ import styles from './admin.module.css'
 type ProductFormProps = { mode: 'add' | 'edit' }
 type SpecificationRow = { id: string; label: string; value: string }
 type SupabaseError = { message?: string; code?: string; details?: string | null; hint?: string | null }
+type ProductDraft = ReturnType<typeof initialValues>
 
 const statusOptions = [
   { value: 'draft', label: 'Draft' },
@@ -38,9 +39,12 @@ function newSpecificationRow(): SpecificationRow {
 
 export function ProductForm({ mode }: ProductFormProps) {
   const router = useRouter()
-  const [values, setValues] = useState(initialValues)
-  const [slug, setSlug] = useState('')
-  const [slugEdited, setSlugEdited] = useState(false)
+  // Draft state belongs only to this form. It is never shared with the public
+  // catalogue or written to localStorage until a successful Supabase save.
+  const [draft, setDraft] = useState<ProductDraft>(initialValues)
+  const savedDraftRef = useRef<ProductDraft | null>(null)
+  const [newProductSlug, setNewProductSlug] = useState('')
+  const [newProductSlugEdited, setNewProductSlugEdited] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [imageFiles, setImageFiles] = useState<File[]>([])
@@ -69,7 +73,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         return
       }
       setProductId(data.id)
-      setValues({
+      const savedDraft = {
         name: data.name,
         brand: data.brand ?? '',
         category: data.category,
@@ -80,7 +84,9 @@ export function ProductForm({ mode }: ProductFormProps) {
         description: data.description ?? '',
         featured: data.featured,
         isActive: data.is_active,
-      })
+      }
+      savedDraftRef.current = { ...savedDraft }
+      setDraft({ ...savedDraft })
       const { data: specificationData, error: specificationError } = await fetchProductSpecifications(data.id)
       if (specificationError) {
         setError(`The product loaded, but its specifications could not be loaded. ${specificationError.message}`)
@@ -89,7 +95,6 @@ export function ProductForm({ mode }: ProductFormProps) {
         specificationRowsRef.current = rows
         setSpecificationRows(rows)
       }
-      setSlug(data.slug)
       const existingUrls = Array.isArray(data.image_urls) ? data.image_urls : []
       setExistingImageUrls(existingUrls)
       setLoadedImageUrls(existingUrls)
@@ -98,13 +103,25 @@ export function ProductForm({ mode }: ProductFormProps) {
     loadProduct()
   }, [mode])
 
-  function update<K extends keyof typeof values>(key: K, value: (typeof values)[K]) {
-    setValues((current) => ({ ...current, [key]: value }))
+  function update<K extends keyof ProductDraft>(key: K, value: ProductDraft[K]) {
+    setDraft((current) => ({ ...current, [key]: value }))
   }
 
   function handleNameChange(name: string) {
     update('name', name)
-    if (mode === 'add' && !slugEdited) setSlug(slugify(name))
+    // A slug is generated only for a new, unsaved product. Existing product
+    // URLs are permanent and an edit draft can never recalculate them.
+    if (mode === 'add' && !newProductSlugEdited) setNewProductSlug(slugify(name))
+  }
+
+  function discardDraft() {
+    if (mode === 'edit' && savedDraftRef.current) setDraft({ ...savedDraftRef.current })
+    if (mode === 'add') {
+      setDraft(initialValues())
+      setNewProductSlug('')
+      setNewProductSlugEdited(false)
+    }
+    router.push('/admin/products')
   }
 
   function updateSpecificationRow(id: string, field: 'label' | 'value', value: string) {
@@ -174,14 +191,14 @@ export function ProductForm({ mode }: ProductFormProps) {
     const submittedSpecificationRows = visibleSpecificationRows.map((row) => ({ ...row }))
     console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'A. visible/form rows', rows: visibleSpecificationRows })
     console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'B. submit-handler rows', rows: submittedSpecificationRows })
-    const normalizedSlug = slug
+    const normalizedSlug = newProductSlug
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
-    const price = Number(values.price)
-    const stock = Number(values.stock)
-    if (!values.name.trim() || (mode === 'add' && !normalizedSlug) || !values.category || !Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0) {
+    const price = Number(draft.price)
+    const stock = Number(draft.stock)
+    if (!draft.name.trim() || (mode === 'add' && !normalizedSlug) || !draft.category || !Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0) {
       setError('Please complete the required fields with a valid non-negative price and whole-number stock value.')
       return
     }
@@ -207,18 +224,18 @@ export function ProductForm({ mode }: ProductFormProps) {
       await requireAdminSession()
       const isExistingProduct = Boolean(productId)
       const productPayload = {
-        name: values.name.trim(),
-        brand: values.brand.trim() || null,
-        category: values.category,
+        name: draft.name.trim(),
+        brand: draft.brand.trim() || null,
+        category: draft.category,
         price,
         stock,
-        status: values.status,
-        short_description: values.shortDescription.trim() || null,
-        description: values.description.trim() || null,
+        status: draft.status,
+        short_description: draft.shortDescription.trim() || null,
+        description: draft.description.trim() || null,
         specifications: {},
         image_urls: [],
-        featured: values.featured,
-        is_active: values.isActive,
+        featured: draft.featured,
+        is_active: draft.isActive,
       }
 
       if (!isExistingProduct) {
@@ -282,18 +299,18 @@ export function ProductForm({ mode }: ProductFormProps) {
       ]
       const removedImageUrls = loadedImageUrls.filter((url) => !remainingExistingImageUrls.includes(url))
       const updatePayload = {
-        name: values.name.trim(),
-        brand: values.brand.trim() || null,
-        category: values.category,
+        name: draft.name.trim(),
+        brand: draft.brand.trim() || null,
+        category: draft.category,
         price,
         stock,
-        status: values.status,
-        short_description: values.shortDescription.trim() || null,
-        description: values.description.trim() || null,
+        status: draft.status,
+        short_description: draft.shortDescription.trim() || null,
+        description: draft.description.trim() || null,
         specifications: {},
         image_urls: finalImageUrls,
-        featured: values.featured,
-        is_active: values.isActive,
+        featured: draft.featured,
+        is_active: draft.isActive,
         updated_at: new Date().toISOString(),
       }
       console.log('Update payload:', updatePayload)
@@ -320,7 +337,6 @@ export function ProductForm({ mode }: ProductFormProps) {
         return
       }
       await deleteProductImages(removedImageUrls)
-      setSlug(data.slug)
       markWebsiteChangesUnpublished()
       window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: data, updatedAt: Date.now() }))
       window.dispatchEvent(new Event('hydro-products-updated'))
@@ -343,19 +359,19 @@ export function ProductForm({ mode }: ProductFormProps) {
       <section className={styles.formSection}>
         <h2>Product information</h2>
         <div className={styles.fieldGrid}>
-          <div className={styles.field}><label htmlFor="product-name">Product Name</label><input id="product-name" required value={values.name} onChange={(event) => handleNameChange(event.target.value)} placeholder="Enter product name" /></div>
-          {mode === 'add' && <div className={styles.field}><label htmlFor="product-slug">Slug</label><input id="product-slug" required value={slug} onChange={(event) => { setSlugEdited(true); setSlug(event.target.value) }} placeholder="product-slug" /><span className={styles.slugHint}>Generated from the product name. You can edit it before saving.</span></div>}
-          <div className={styles.field}><label htmlFor="brand">Brand</label><input id="brand" value={values.brand} onChange={(event) => update('brand', event.target.value)} placeholder="Brand name" /></div>
-          <div className={styles.field}><label htmlFor="category">Category</label><select id="category" required value={values.category} onChange={(event) => update('category', event.target.value)}><option value="" disabled>Select a category</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
-          <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={values.price} onChange={(event) => update('price', event.target.value)} /></div>
-          <div className={styles.field}><label htmlFor="stock">Stock</label><input id="stock" required min="0" step="1" type="number" value={values.stock} onChange={(event) => update('stock', event.target.value)} /></div>
-          <div className={styles.field}><label htmlFor="status">Status</label><select id="status" value={values.status} onChange={(event) => update('status', event.target.value)}>{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></div>
+          <div className={styles.field}><label htmlFor="product-name">Product Name</label><input id="product-name" required value={draft.name} onChange={(event) => handleNameChange(event.target.value)} placeholder="Enter product name" /></div>
+          {mode === 'add' && <div className={styles.field}><label htmlFor="product-slug">Slug</label><input id="product-slug" required value={newProductSlug} onChange={(event) => { setNewProductSlugEdited(true); setNewProductSlug(event.target.value) }} placeholder="product-slug" /><span className={styles.slugHint}>Generated from the product name. You can edit it before saving.</span></div>}
+          <div className={styles.field}><label htmlFor="brand">Brand</label><input id="brand" value={draft.brand} onChange={(event) => update('brand', event.target.value)} placeholder="Brand name" /></div>
+          <div className={styles.field}><label htmlFor="category">Category</label><select id="category" required value={draft.category} onChange={(event) => update('category', event.target.value)}><option value="" disabled>Select a category</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
+          <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={draft.price} onChange={(event) => update('price', event.target.value)} /></div>
+          <div className={styles.field}><label htmlFor="stock">Stock</label><input id="stock" required min="0" step="1" type="number" value={draft.stock} onChange={(event) => update('stock', event.target.value)} /></div>
+          <div className={styles.field}><label htmlFor="status">Status</label><select id="status" value={draft.status} onChange={(event) => update('status', event.target.value)}>{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></div>
           <div className={styles.toggleRow}>
-            <label className={styles.toggle}><span><strong>Featured</strong><span>Set featured status</span></span><input className={styles.switch} type="checkbox" checked={values.featured} onChange={(event) => update('featured', event.target.checked)} /></label>
-            <label className={styles.toggle}><span><strong>Active</strong><span>Set active status</span></span><input className={styles.switch} type="checkbox" checked={values.isActive} onChange={(event) => update('isActive', event.target.checked)} /></label>
+            <label className={styles.toggle}><span><strong>Featured</strong><span>Set featured status</span></span><input className={styles.switch} type="checkbox" checked={draft.featured} onChange={(event) => update('featured', event.target.checked)} /></label>
+            <label className={styles.toggle}><span><strong>Active</strong><span>Set active status</span></span><input className={styles.switch} type="checkbox" checked={draft.isActive} onChange={(event) => update('isActive', event.target.checked)} /></label>
           </div>
-          <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="short-description">Short Description</label><textarea id="short-description" value={values.shortDescription} onChange={(event) => update('shortDescription', event.target.value)} placeholder="Short product description" /></div>
-          <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="description">Full Description</label><textarea id="description" value={values.description} onChange={(event) => update('description', event.target.value)} placeholder="Full product description" /></div>
+          <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="short-description">Short Description</label><textarea id="short-description" value={draft.shortDescription} onChange={(event) => update('shortDescription', event.target.value)} placeholder="Short product description" /></div>
+          <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="description">Full Description</label><textarea id="description" value={draft.description} onChange={(event) => update('description', event.target.value)} placeholder="Full product description" /></div>
         </div>
       </section>
       <section className={styles.formSection}>
@@ -367,7 +383,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         </div>)}</div>}
       </section>
       <section className={styles.formSection}><h2>Product images</h2><ProductImageUploader files={imageFiles} onFilesChange={setImageFiles} existingImageUrls={existingImageUrls} onExistingImageUrlsChange={setExistingImageUrls} disabled={isSaving} progress={uploadProgress} /></section>
-      <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={() => router.push('/admin/products')}>Cancel</button><button type="submit" className={styles.primaryButton} disabled={isSaving}>{isSaving ? 'Saving…' : mode === 'add' ? 'Save product' : 'Save changes'}</button></div>
+      <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={discardDraft}>Cancel</button><button type="submit" className={styles.primaryButton} disabled={isSaving}>{isSaving ? 'Saving…' : mode === 'add' ? 'Save product' : 'Save changes'}</button></div>
     </form>
   )
 }
