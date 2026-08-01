@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.create-guest-order]
 verify_jwt = false
+
+[functions.create-showroom-appointment]
+verify_jwt = false

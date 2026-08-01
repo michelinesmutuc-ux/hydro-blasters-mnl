@@ -29,7 +29,7 @@ export default function Home() {
             <p className="hero-text">Toy gel blasters, parts, accessories, and support since 2021.</p>
             <div className="button-row">
               <a className="primary-button" href="/shop">Browse the arsenal <span>→</span></a>
-              <a className="secondary-button" href="#visit">Book a visit</a>
+              <a className="secondary-button" href="/appointments">Book a visit</a>
             </div>
           </div>
           <div className="hero-placeholder" aria-label="Product image placeholder">
@@ -63,7 +63,7 @@ export default function Home() {
 
         <section className="visit-section" id="visit">
           <div><p className="eyebrow">Showroom appointment</p><h2>Planning to visit?</h2><p>Showroom visits are arranged in advance.</p></div>
-          <a className="primary-button" href="#visit">Book a visit <span>→</span></a>
+          <a className="primary-button" href="/appointments">Book a visit <span>→</span></a>
         </section>
       </main>
 

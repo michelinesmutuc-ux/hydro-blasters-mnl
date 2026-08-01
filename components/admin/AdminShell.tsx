@@ -9,7 +9,7 @@ import { AdminDebugPanel } from './AdminDebugPanel'
 import styles from './admin.module.css'
 
 type AdminShellProps = {
-  active: 'dashboard' | 'products' | 'orders'
+  active: 'dashboard' | 'products' | 'orders' | 'appointments'
   children: React.ReactNode
 }
 
@@ -61,6 +61,7 @@ export function AdminShell({ active, children }: AdminShellProps) {
           <Link href="/admin" data-active={active === 'dashboard'}>Dashboard</Link>
           <Link href="/admin/products" data-active={active === 'products'}>Products</Link>
           <Link href="/admin/orders" data-active={active === 'orders'}>Orders</Link>
+          <Link href="/admin/appointments" data-active={active === 'appointments'}>Appointments</Link>
         </nav>
         <div className={styles.sidebarFooter}>Signed in as an authorized administrator.</div>
       </aside>
