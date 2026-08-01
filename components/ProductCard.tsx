@@ -58,8 +58,8 @@ export function ProductCard({ product, actions }: ProductCardProps) {
           </dl>
         </div>
       </Link>
-      <AddToCartButton product={product} />
       <CompareButton product={product} />
+      <AddToCartButton product={product} />
       {actions && <div className="product-card-actions">{actions}</div>}
     </article>
   )
