@@ -17,6 +17,7 @@ export default function Home() {
           <a href="#about">About</a>
         </nav>
         <div className="header-actions">
+          <a className="mobile-shop-link" href="/shop">Shop</a>
           <button className="icon-button" type="button" aria-label="Search">⌕</button>
           <CartLink />
         </div>

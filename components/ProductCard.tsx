@@ -54,7 +54,6 @@ export function ProductCard({ product, actions }: ProductCardProps) {
             <div><dt>Price</dt><dd>{product.price}</dd></div>
             <div><dt>Stock</dt><dd>{product.stock}</dd></div>
             <div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div>
-            <div><dt>Pre-order</dt><dd>{product.status === 'preorder' ? 'Available' : 'Not available'}</dd></div>
           </dl>
         </div>
       </Link>
