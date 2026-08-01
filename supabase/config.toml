@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.create-showroom-appointment]
 verify_jwt = false
+
+[functions.notify-new-appointment]
+verify_jwt = true
