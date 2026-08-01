@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProductImageFrame } from './ProductImageFrame'
+import { getProductUrl } from '../lib/products/get-product-url'
 
 export type PublicProduct = {
   id: string
@@ -27,7 +28,7 @@ function statusLabel(status: PublicProduct['status']) {
 
 export function ProductCard({ product, actions }: ProductCardProps) {
   const imageUrl = product.image_urls[0]
-  const productHref = `/products/${product.slug}`
+  const productHref = getProductUrl(product)
   const linkRef = useRef<HTMLAnchorElement>(null)
 
   useEffect(() => {

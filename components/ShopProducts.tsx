@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchActiveProducts } from '../lib/supabase/products'
 import { ProductCard, type PublicProduct } from './ProductCard'
+import { getProductUrl } from '../lib/products/get-product-url'
 
 type SortOption = 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'name-asc'
 type ShopProduct = PublicProduct & {
@@ -66,7 +67,7 @@ export function ShopProducts() {
       const product = currentProducts[0]
       if (product) {
         console.log('Current slug:', product.slug)
-        console.log('Generated href:', `/products/${product.slug}`)
+        console.log('Generated href:', getProductUrl(product))
       }
     }
     setLoading(false)
