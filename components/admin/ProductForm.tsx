@@ -30,7 +30,7 @@ function slugify(value: string) {
 }
 
 function initialValues() {
-  return { name: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shortDescription: '', description: '', featured: false, isActive: false }
+  return { name: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shippingClassification: 'standard', shortDescription: '', description: '', featured: false, isActive: false }
 }
 
 function newSpecificationRow(): SpecificationRow {
@@ -83,6 +83,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         price: String(data.price),
         stock: mode === 'add' ? '0' : String(data.stock),
         status: data.status,
+        shippingClassification: data.shipping_classification ?? 'standard',
         shortDescription: data.short_description ?? '',
         description: data.description ?? '',
         featured: data.featured,
@@ -244,6 +245,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         price,
         stock,
         status: draft.status,
+        shipping_classification: draft.shippingClassification,
         short_description: draft.shortDescription.trim() || null,
         description: draft.description.trim() || null,
         specifications: {},
@@ -319,6 +321,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         price,
         stock,
         status: draft.status,
+        shipping_classification: draft.shippingClassification,
         short_description: draft.shortDescription.trim() || null,
         description: draft.description.trim() || null,
         specifications: {},
@@ -380,6 +383,7 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={draft.price} onChange={(event) => update('price', event.target.value)} /></div>
           <div className={styles.field}><label htmlFor="stock">Stock</label><input id="stock" required min="0" step="1" type="number" value={draft.stock} onChange={(event) => update('stock', event.target.value)} /></div>
           <div className={styles.field}><label htmlFor="status">Status</label><select id="status" value={draft.status} onChange={(event) => update('status', event.target.value)}>{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></div>
+          <div className={styles.field}><label htmlFor="shipping-classification">Shipping classification</label><select id="shipping-classification" value={draft.shippingClassification} onChange={(event) => update('shippingClassification', event.target.value as 'standard' | 'bulky')}><option value="standard">Standard — ₱149 when cart contains no bulky item</option><option value="bulky">Bulky — ₱199 nationwide shipping</option></select></div>
           <div className={styles.toggleRow}>
             <label className={styles.toggle}><span><strong>Featured</strong><span>Set featured status</span></span><input className={styles.switch} type="checkbox" checked={draft.featured} onChange={(event) => update('featured', event.target.checked)} /></label>
             <label className={styles.toggle}><span><strong>Active</strong><span>Set active status</span></span><input className={styles.switch} type="checkbox" checked={draft.isActive} onChange={(event) => update('isActive', event.target.checked)} /></label>

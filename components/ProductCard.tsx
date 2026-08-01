@@ -4,6 +4,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ProductImageFrame } from './ProductImageFrame'
 import { getProductUrl } from '../lib/products/get-product-url'
+import { AddToCartButton } from './AddToCartButton'
 
 export type PublicProduct = {
   id: string
@@ -56,6 +57,7 @@ export function ProductCard({ product, actions }: ProductCardProps) {
           </dl>
         </div>
       </Link>
+      <AddToCartButton product={product} />
       {actions && <div className="product-card-actions">{actions}</div>}
     </article>
   )

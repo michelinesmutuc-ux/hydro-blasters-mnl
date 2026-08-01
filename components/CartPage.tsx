@@ -1,0 +1,5 @@
+'use client'
+import Link from 'next/link'
+import { useCart } from './CartProvider'
+const peso = (value:number) => new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(value)
+export function CartPage() { const { lines, subtotal, setQuantity, remove }=useCart(); if(!lines.length)return <section className="section"><h1>Your cart is empty</h1><Link className="primary-button" href="/shop">Browse products</Link></section>; return <section className="section"><p className="eyebrow">Guest cart</p><h1>Your cart</h1>{lines.map(line=><div className="product-card" key={line.id}><h2>{line.name}</h2><p>{peso(Number(line.price))}</p><label>Quantity <input type="number" min="1" max={line.stock} value={line.quantity} onChange={event=>setQuantity(line.id,Number(event.target.value))}/></label><button type="button" className="secondary-button" onClick={()=>remove(line.id)}>Remove</button></div>)}<h2>Subtotal: {peso(subtotal)}</h2><Link className="primary-button" href="/checkout">Proceed to checkout</Link></section> }

@@ -1,2 +1,5 @@
 [functions.publish-website]
 verify_jwt = false
+
+[functions.create-guest-order]
+verify_jwt = false

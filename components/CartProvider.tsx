@@ -1,0 +1,24 @@
+'use client'
+
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+
+export type CartProduct = { id: string; name: string; slug: string; price: number | string; stock: number; shipping_classification?: 'standard' | 'bulky'; image_urls?: string[] }
+export type CartLine = CartProduct & { quantity: number }
+type Cart = { lines: CartLine[]; add: (product: CartProduct) => void; setQuantity: (id: string, quantity: number) => void; remove: (id: string) => void; clear: () => void; subtotal: number }
+const CartContext = createContext<Cart | null>(null)
+const storageKey = 'hydro-blasters-cart'
+
+export function CartProvider({ children }: { children: React.ReactNode }) {
+  const [lines, setLines] = useState<CartLine[]>([])
+  useEffect(() => { try { setLines(JSON.parse(window.localStorage.getItem(storageKey) ?? '[]')) } catch {} }, [])
+  useEffect(() => { window.localStorage.setItem(storageKey, JSON.stringify(lines)) }, [lines])
+  const value = useMemo<Cart>(() => ({
+    lines,
+    add: (product) => setLines((current) => { const existing = current.find((line) => line.id === product.id); if (existing) return current.map((line) => line.id === product.id ? { ...line, quantity: Math.min(line.quantity + 1, product.stock) } : line); return product.stock > 0 ? [...current, { ...product, quantity: 1 }] : current }),
+    setQuantity: (id, quantity) => setLines((current) => current.map((line) => line.id === id ? { ...line, quantity: Math.max(1, Math.min(quantity, line.stock)) } : line)),
+    remove: (id) => setLines((current) => current.filter((line) => line.id !== id)), clear: () => setLines([]),
+    subtotal: lines.reduce((total, line) => total + Number(line.price) * line.quantity, 0),
+  }), [lines])
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>
+}
+export function useCart() { const cart = useContext(CartContext); if (!cart) throw new Error('CartProvider is missing.'); return cart }

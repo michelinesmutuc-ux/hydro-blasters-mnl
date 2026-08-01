@@ -1,7 +1,7 @@
 import { supabase } from './client'
 
-export const publicProductColumns = 'id,name,slug,brand,category,price,stock,status,image_urls,featured,created_at,short_description'
-export const adminProductColumns = 'id,name,slug,brand,category,price,stock,status,short_description,description,specifications,image_urls,featured,is_active,created_at'
+export const publicProductColumns = 'id,name,slug,brand,category,price,stock,status,image_urls,shipping_classification,featured,created_at,short_description'
+export const adminProductColumns = 'id,name,slug,brand,category,price,stock,status,shipping_classification,short_description,description,specifications,image_urls,featured,is_active,created_at'
 
 export async function fetchActiveProducts(options: { featuredOnly?: boolean } = {}) {
   let query = supabase.from('products').select(publicProductColumns).eq('is_active', true)
@@ -25,7 +25,7 @@ export async function fetchAdminProducts() {
 export async function fetchAdminProduct(productId: string) {
   return supabase
     .from('products')
-    .select('id,name,slug,brand,category,price,stock,status,short_description,description,featured,is_active,image_urls')
+    .select('id,name,slug,brand,category,price,stock,status,shipping_classification,short_description,description,featured,is_active,image_urls')
     .eq('id', productId)
     .single()
 }
