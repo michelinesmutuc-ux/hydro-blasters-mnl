@@ -58,7 +58,7 @@ export function ProductCard({ product, actions }: ProductCardProps) {
         </div>
       </Link>
       <AddToCartButton product={product} />
-      <CompareButton product={product} />
+      <div className="product-card-secondary-actions"><Link href={productHref}>View Product</Link><CompareButton product={product} compact /></div>
       {actions && <div className="product-card-actions">{actions}</div>}
     </article>
   )
