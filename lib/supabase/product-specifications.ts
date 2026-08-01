@@ -29,6 +29,16 @@ export async function fetchProductSpecifications(productId: string) {
     .order('created_at', { ascending: true })
 }
 
+export async function fetchProductSpecificationsForProducts(productIds: string[]) {
+  if (productIds.length === 0) return { data: [] as ProductSpecification[], error: null }
+  return supabase
+    .from('product_specifications')
+    .select('id,product_id,label,value,sort_order,updated_at')
+    .in('product_id', productIds)
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true })
+}
+
 export async function replaceProductSpecifications(productId: string, rows: SpecificationInput[]) {
   const normalizedRows = normalizeSpecificationRows(rows)
   const payload = normalizedRows.map((row) => ({ ...row, product_id: productId }))

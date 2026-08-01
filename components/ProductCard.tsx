@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ProductImageFrame } from './ProductImageFrame'
 import { getProductUrl } from '../lib/products/get-product-url'
 import { AddToCartButton } from './AddToCartButton'
+import { CompareButton } from './CompareButton'
 
 export type PublicProduct = {
   id: string
@@ -58,6 +59,7 @@ export function ProductCard({ product, actions }: ProductCardProps) {
         </div>
       </Link>
       <AddToCartButton product={product} />
+      <CompareButton product={product} />
       {actions && <div className="product-card-actions">{actions}</div>}
     </article>
   )

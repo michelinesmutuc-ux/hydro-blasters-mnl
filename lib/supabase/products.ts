@@ -9,6 +9,11 @@ export async function fetchActiveProducts(options: { featuredOnly?: boolean } = 
   return query.order('created_at', { ascending: false })
 }
 
+export async function fetchActiveProductsBySlugs(slugs: string[]) {
+  if (slugs.length === 0) return { data: [], error: null }
+  return supabase.from('products').select(publicProductColumns).eq('is_active', true).in('slug', slugs)
+}
+
 export async function fetchActiveProductBySlug(slug: string) {
   return supabase
     .from('products')
