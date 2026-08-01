@@ -16,6 +16,15 @@ Deno.serve(async (request) => {
     if (proofRequired && !allowed.includes(body.payment_proof.contentType)) return reply({ error: 'Payment proof must be JPG, PNG, or WebP.' }, 400)
     const proofBytes = proofRequired ? Uint8Array.from(atob(body.payment_proof.base64), c => c.charCodeAt(0)) : null
     if (proofBytes && proofBytes.byteLength > 5 * 1024 * 1024) return reply({ error: 'Payment proof must be 5 MB or smaller.' }, 400)
+    if (proofRequired) {
+      const { data: paymentSetting, error: paymentSettingError } = await admin
+        .from('payment_settings')
+        .select('id')
+        .eq('method', body.payment_method)
+        .eq('enabled', true)
+        .maybeSingle()
+      if (paymentSettingError || !paymentSetting) return reply({ error: 'Payment details are temporarily unavailable. Please contact Hydro Blasters MNL before sending payment.' }, 400)
+    }
     const { data, error } = await admin.rpc('create_guest_order', { payload: body })
     if (error || !data?.[0]) return reply({ error: error?.message ?? 'Order could not be created.' }, 400)
     const order = data[0]
