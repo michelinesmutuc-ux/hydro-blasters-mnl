@@ -16,25 +16,7 @@ Deno.serve(async (request) => {
     if (proofRequired && !allowed.includes(body.payment_proof.contentType)) return reply({ error: 'Payment proof must be JPG, PNG, or WebP.' }, 400)
     const proofBytes = proofRequired ? Uint8Array.from(atob(body.payment_proof.base64), c => c.charCodeAt(0)) : null
     if (proofBytes && proofBytes.byteLength > 5 * 1024 * 1024) return reply({ error: 'Payment proof must be 5 MB or smaller.' }, 400)
-    if (proofRequired) {
-      if (body.payment_method === 'bank_transfer' && !body.payment_option_id) return reply({ error: 'Choose your bank before placing your order.' }, 400)
-      const { data: paymentSetting, error: paymentSettingError } = await admin
-        .from('payment_settings')
-        .select('id')
-        .eq('method', body.payment_method)
-        .eq('enabled', true)
-        .maybeSingle()
-      if (paymentSettingError || !paymentSetting) return reply({ error: body.payment_method === 'bank_transfer' ? 'Bank transfer is temporarily unavailable. Please choose another payment method.' : 'Payment details are temporarily unavailable. Please contact Hydro Blasters MNL before sending payment.' }, 400)
-      if (body.payment_method === 'bank_transfer') {
-        const { data: bankOption, error: bankOptionError } = await admin
-          .from('payment_method_options')
-          .select('id')
-          .eq('id', body.payment_option_id)
-          .eq('enabled', true)
-          .maybeSingle()
-        if (bankOptionError || !bankOption) return reply({ error: 'The selected bank transfer option is no longer available. Please choose another bank.' }, 400)
-      }
-    }
+    if (body.payment_method === 'bank_transfer' && !String(body.payment_option_name ?? '').trim()) return reply({ error: 'Choose your bank before placing your order.' }, 400)
     const { data, error } = await admin.rpc('create_guest_order', { payload: body })
     if (error || !data?.[0]) return reply({ error: error?.message ?? 'Order could not be created.' }, 400)
     const order = data[0]

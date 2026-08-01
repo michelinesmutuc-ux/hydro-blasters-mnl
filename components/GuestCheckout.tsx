@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase/client'
 import { useCart } from './CartProvider'
 import { PaymentQr } from './PaymentQr'
+import { getPaymentOption } from '../lib/payment-config'
 
 const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 const initial = { customer_name: '', mobile_number: '', house_unit: '', street: '', barangay: '', city_municipality: '', region: '', postal_code: '', order_notes: '' }
@@ -70,7 +71,7 @@ export function GuestCheckout() {
           ...form,
           delivery_method: delivery,
           payment_method: payment,
-          payment_option_id: bankOptionId,
+          payment_option_name: getPaymentOption(payment, bankOptionId)?.name ?? null,
           items: lines.map((line) => ({ product_id: line.id, quantity: line.quantity })),
           idempotency_key: crypto.randomUUID(),
           payment_proof: proof ? { base64: await fileToBase64(proof), contentType: proof.type } : null,

@@ -6,6 +6,3 @@ verify_jwt = false
 
 [functions.create-showroom-appointment]
 verify_jwt = false
-
-[functions.upload-payment-qr]
-verify_jwt = false
