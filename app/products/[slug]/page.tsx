@@ -23,9 +23,23 @@ export async function generateStaticParams() {
 export default async function ProductPage({ params: paramsPromise }: { params: Promise<{ slug: string }> }) {
   const params = await paramsPromise
   const { data, error } = await fetchActiveProductBySlug(params.slug)
-  const { data: specificationRows } = data
+  const { data: specificationRows, error: specificationError } = data
     ? await fetchProductSpecifications(data.id)
-    : { data: [] }
+    : { data: [], error: null }
+
+  if (specificationError) {
+    throw new Error(`Could not export specifications for ${params.slug}: ${specificationError.message}`)
+  }
+
+  console.log('[Hydro Blasters MNL] Specification save transaction', {
+    stage: 'E. static product build rows',
+    slug: params.slug,
+    productId: data?.id ?? null,
+    saveAttemptIds: (specificationRows ?? []).map((row) => row.save_attempt_id),
+    rows: specificationRows ?? [],
+    builtAt: new Date().toISOString(),
+  })
+
   return (
     <div className="site-shell">
       <div className="announcement"><span aria-hidden="true" />STORE INFORMATION COMING SOON</div>

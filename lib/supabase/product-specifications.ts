@@ -1,7 +1,15 @@
 import { supabase } from './client'
 
 export type SpecificationInput = { label: string; value: string }
-export type ProductSpecification = SpecificationInput & { id: string; product_id: string; sort_order: number }
+export type ProductSpecification = SpecificationInput & {
+  id: string
+  product_id: string
+  sort_order: number
+  updated_at: string
+  // This is temporary diagnostic metadata. It lets a browser save attempt be
+  // traced through the database and into the separate static site build.
+  save_attempt_id: string | null
+}
 
 export function normalizeSpecificationRows(rows: SpecificationInput[]) {
   const populatedRows = rows
@@ -18,7 +26,7 @@ export function normalizeSpecificationRows(rows: SpecificationInput[]) {
 export async function fetchProductSpecifications(productId: string) {
   return supabase
     .from('product_specifications')
-    .select('id,product_id,label,value,sort_order')
+    .select('id,product_id,label,value,sort_order,updated_at,save_attempt_id')
     .eq('product_id', productId)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
@@ -26,7 +34,11 @@ export async function fetchProductSpecifications(productId: string) {
 
 export async function replaceProductSpecifications(productId: string, rows: SpecificationInput[], saveAttemptId?: string) {
   const normalizedRows = normalizeSpecificationRows(rows)
-  const payload = normalizedRows.map((row) => ({ ...row, product_id: productId }))
+  const payload = normalizedRows.map((row) => ({
+    ...row,
+    product_id: productId,
+    save_attempt_id: saveAttemptId ?? null,
+  }))
   console.log('[Hydro Blasters MNL] Specification save transaction', { saveAttemptId, stage: 'C. rows sent to Supabase', rows: payload })
 
   const { data: deletedRows, error: deleteError } = await supabase
@@ -42,7 +54,7 @@ export async function replaceProductSpecifications(productId: string, rows: Spec
     const { data, error } = await supabase
       .from('product_specifications')
       .insert(payload)
-      .select('id,product_id,label,value,sort_order')
+      .select('id,product_id,label,value,sort_order,updated_at,save_attempt_id')
     if (error) throw error
     insertedRows = (data ?? []) as ProductSpecification[]
   }

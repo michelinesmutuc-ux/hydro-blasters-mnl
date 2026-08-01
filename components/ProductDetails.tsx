@@ -16,7 +16,14 @@ export type Product = {
   description: string | null
   image_urls?: string[]
 }
-export type ProductSpecification = { id: string; label: string; value: string; sort_order: number }
+export type ProductSpecification = {
+  id: string
+  label: string
+  value: string
+  sort_order: number
+  updated_at?: string
+  save_attempt_id?: string | null
+}
 
 function statusLabel(status: Product['status']) {
   return status.replaceAll('_', ' ')
@@ -33,8 +40,16 @@ export function ProductDetails({ product, specificationRows = [], error }: { pro
     if (product) {
       console.log(product)
       console.log(product.image_urls)
+      console.log('[Hydro Blasters MNL] Specification save transaction', {
+        stage: 'F. product detail rendered rows',
+        slug: product.slug,
+        productId: product.id,
+        saveAttemptIds: specificationRows.map((row) => row.save_attempt_id ?? null),
+        rows: specificationRows,
+        renderedAt: new Date().toISOString(),
+      })
     }
-  }, [product])
+  }, [product, specificationRows])
 
   if (error) return <section className="section"><div className="catalogue-state" role="alert">This product could not be loaded. Please try again later.</div></section>
   if (!product) return <ProductUnavailable />
