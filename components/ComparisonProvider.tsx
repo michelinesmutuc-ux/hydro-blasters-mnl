@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import type { PublicProduct } from './ProductCard'
 
@@ -52,11 +52,30 @@ export function useComparison() {
 
 function ComparisonBar() {
   const { products, ready, remove, clear } = useComparison()
+  const barRef = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    const bar = barRef.current
+    if (!bar) {
+      document.documentElement.style.removeProperty('--comparison-bar-height')
+      return
+    }
+
+    const setBarHeight = () => document.documentElement.style.setProperty('--comparison-bar-height', `${bar.offsetHeight}px`)
+    setBarHeight()
+    const observer = new ResizeObserver(setBarHeight)
+    observer.observe(bar)
+    return () => {
+      observer.disconnect()
+      document.documentElement.style.removeProperty('--comparison-bar-height')
+    }
+  }, [products.length])
+
   if (!ready || products.length === 0) return null
   const href = `/compare?products=${encodeURIComponent(products.map((product) => product.slug).join(','))}`
   const canCompare = products.length >= 2
 
-  return <aside className="comparison-bar" aria-label="Product comparison selection">
+  return <aside className="comparison-bar" ref={barRef} aria-label="Product comparison selection">
     <div className="comparison-bar-copy"><strong>{products.length} of 3 products selected</strong><span>{canCompare ? 'Ready to compare.' : 'Select at least 2 products to compare.'}</span>{products.length === 3 && <span role="status">Maximum of 3 products reached.</span>}</div>
     <div className="comparison-bar-products">{products.map((product) => <div className="comparison-bar-product" key={product.id}><span>{product.name}</span><button type="button" onClick={() => remove(product.id)} aria-label={`Remove ${product.name} from comparison`}>Remove</button></div>)}</div>
     <div className="comparison-bar-actions"><Link className={canCompare ? 'primary-button' : 'comparison-button-disabled'} href={canCompare ? href : '#'} aria-disabled={!canCompare} onClick={(event) => { if (!canCompare) event.preventDefault() }}>Compare Products</Link><button type="button" onClick={clear}>Clear</button></div>
