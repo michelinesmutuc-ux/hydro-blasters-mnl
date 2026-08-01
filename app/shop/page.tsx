@@ -1,4 +1,5 @@
 import { ShopProducts } from '../../components/ShopProducts'
+import { CartLink } from '../../components/CartLink'
 
 export default function ShopPage() {
   return (
@@ -7,7 +8,7 @@ export default function ShopPage() {
       <header className="site-header">
         <a className="brand" href="/" aria-label="Hydro Blasters MNL home"><img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /></a>
         <nav aria-label="Primary navigation"><a href="/shop">Shop</a><a href="/#categories">Categories</a><a href="/#about">About</a></nav>
-        <div className="header-actions"><button className="icon-button" type="button" aria-label="Search">⌕</button><button className="icon-button" type="button" aria-label="Cart">⌑ <span className="cart-count">0</span></button></div>
+        <div className="header-actions"><button className="icon-button" type="button" aria-label="Search">⌕</button><CartLink /></div>
       </header>
       <main>
         <section className="section shop-section">

@@ -2,6 +2,7 @@ import { ProductDetails, type Product } from '../../../components/ProductDetails
 import { supabase } from '../../../lib/supabase/client'
 import { fetchActiveProductBySlug } from '../../../lib/supabase/products'
 import { fetchProductSpecifications } from '../../../lib/supabase/product-specifications'
+import { CartLink } from '../../../components/CartLink'
 
 export const dynamicParams = false
 
@@ -37,7 +38,7 @@ export default async function ProductPage({ params: paramsPromise }: { params: P
       <header className="site-header">
         <a className="brand" href="/" aria-label="Hydro Blasters MNL home"><img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /></a>
         <nav aria-label="Primary navigation"><a href="/shop">Shop</a><a href="/#categories">Categories</a><a href="/#about">About</a></nav>
-        <div className="header-actions"><button className="icon-button" type="button" aria-label="Search">⌕</button><button className="icon-button" type="button" aria-label="Cart">⌑ <span className="cart-count">0</span></button></div>
+        <div className="header-actions"><button className="icon-button" type="button" aria-label="Search">⌕</button><CartLink /></div>
       </header>
       <main><ProductDetails product={data as Product | null} specificationRows={specificationRows ?? []} error={error?.message} /></main>
       <footer><div className="footer-brand"><img src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span>Hydro Blasters MNL</span></div><div className="footer-links"><div><h3>Contact</h3><p>Information not yet provided</p></div><div><h3>Social links</h3><p>Information not yet provided</p></div><div><h3>Store policies</h3><p>Information not yet provided</p></div><div><h3>Showroom</h3><p>Information not yet provided</p></div></div></footer>

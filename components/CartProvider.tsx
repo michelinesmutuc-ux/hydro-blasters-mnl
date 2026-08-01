@@ -10,8 +10,9 @@ const storageKey = 'hydro-blasters-cart'
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [lines, setLines] = useState<CartLine[]>([])
-  useEffect(() => { try { setLines(JSON.parse(window.localStorage.getItem(storageKey) ?? '[]')) } catch {} }, [])
-  useEffect(() => { window.localStorage.setItem(storageKey, JSON.stringify(lines)) }, [lines])
+  const [ready, setReady] = useState(false)
+  useEffect(() => { try { setLines(JSON.parse(window.localStorage.getItem(storageKey) ?? '[]')) } catch {} finally { setReady(true) } }, [])
+  useEffect(() => { if (ready) window.localStorage.setItem(storageKey, JSON.stringify(lines)) }, [lines, ready])
   const value = useMemo<Cart>(() => ({
     lines,
     add: (product) => setLines((current) => { const existing = current.find((line) => line.id === product.id); if (existing) return current.map((line) => line.id === product.id ? { ...line, quantity: Math.min(line.quantity + 1, product.stock) } : line); return product.stock > 0 ? [...current, { ...product, quantity: 1 }] : current }),

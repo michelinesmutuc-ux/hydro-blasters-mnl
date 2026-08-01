@@ -1,5 +1,6 @@
 import { FeaturedCategories } from '../components/FeaturedCategories'
 import { PublicProducts } from '../components/PublicProducts'
+import { CartLink } from '../components/CartLink'
 
 export default function Home() {
   return (
@@ -16,7 +17,7 @@ export default function Home() {
         </nav>
         <div className="header-actions">
           <button className="icon-button" type="button" aria-label="Search">⌕</button>
-          <button className="icon-button" type="button" aria-label="Cart">⌑ <span className="cart-count">0</span></button>
+          <CartLink />
         </div>
       </header>
 
