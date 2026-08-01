@@ -1,7 +1,6 @@
 'use client'
 
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
 import { supabase } from '../../lib/supabase/client'
 import styles from './admin.module.css'
 
@@ -10,7 +9,6 @@ type PaymentSetting = { id: string; method: PaymentMethod; display_name: string;
 type BankOption = { id: string; payment_method_id: string; name: string; masked_account_name: string; masked_account_number: string; qr_path: string; enabled: boolean; sort_order: number }
 type ParentDraft = { method: PaymentMethod; display_name: string; masked_account_name: string; masked_account_number: string; qr_path: string; enabled: boolean }
 type BankDraft = { id?: string; name: string; masked_account_name: string; masked_account_number: string; qr_path: string; enabled: boolean }
-type UploadDiagnostic = { bucket: string; path: string; operation: 'upload'; upsert: false; userId: string | null; role: string | null; errorCode?: string; errorMessage?: string }
 
 const parentDefaults: Record<PaymentMethod, ParentDraft> = {
   gcash: { method: 'gcash', display_name: 'GCash', masked_account_name: '', masked_account_number: '', qr_path: '', enabled: false },
@@ -20,16 +18,6 @@ const parentDefaults: Record<PaymentMethod, ParentDraft> = {
 const blankBank = (): BankDraft => ({ name: '', masked_account_name: '', masked_account_number: '', qr_path: '', enabled: true })
 const accepted = ['image/jpeg', 'image/png', 'image/webp']
 const extensionFor = (file: File) => file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg'
-
-function paymentQrStorage(accessToken: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()
-  const key = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)?.trim()
-  if (!url || !key) throw new Error('QR image upload failed: Supabase is not configured.')
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-    global: { headers: { Authorization: `Bearer ${accessToken}` } },
-  }).storage.from('payment-qrs')
-}
 
 export function PaymentSettings() {
   const [settings, setSettings] = useState<PaymentSetting[]>([])
@@ -42,7 +30,6 @@ export function PaymentSettings() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [uploadDiagnostic, setUploadDiagnostic] = useState<UploadDiagnostic | null>(null)
 
   const selectedParent = settings.find((setting) => setting.method === draft.method) ?? null
   const isBankTransfer = draft.method === 'bank_transfer'
@@ -75,36 +62,22 @@ export function PaymentSettings() {
     setFile(file); setError(null)
   }
 
-  async function uploadQr(file: File, prefix: string) {
-    const path = `settings/${prefix}-${crypto.randomUUID()}.${extensionFor(file)}`
+  async function uploadQr(file: File, targetType: 'payment_method' | 'payment_method_option', targetId: string) {
     const { data: { session } } = await supabase.auth.getSession()
-    const diagnostic: UploadDiagnostic = {
-      bucket: 'payment-qrs',
-      path,
-      operation: 'upload',
-      upsert: false,
-      userId: session?.user.id ?? null,
-      role: typeof session?.user.app_metadata.role === 'string' ? session.user.app_metadata.role : null,
-    }
-    console.info('[Hydro Blasters MNL] Payment QR upload', diagnostic)
     if (!session) throw new Error('QR image upload failed: no active administrator session.')
-    if (diagnostic.role !== 'admin') throw new Error('QR image upload failed: the current session does not have the admin role.')
-    const { error: uploadError } = await paymentQrStorage(session.access_token).upload(path, file, { contentType: file.type, upsert: false })
-    if (uploadError) {
-      const storageError = uploadError as typeof uploadError & { statusCode?: string; error?: string }
-      const failedDiagnostic = { ...diagnostic, errorCode: storageError.statusCode ?? storageError.error ?? storageError.name, errorMessage: uploadError.message }
-      setUploadDiagnostic(failedDiagnostic)
-      console.error('[Hydro Blasters MNL] Payment QR upload failed', failedDiagnostic)
-      throw new Error(`QR image upload failed (${failedDiagnostic.errorCode}): ${failedDiagnostic.errorMessage}`)
-    }
-    setUploadDiagnostic(null)
-    return path
-  }
-
-  async function removeQr(path: string) {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
-    await paymentQrStorage(session.access_token).remove([path])
+    const form = new FormData()
+    form.set('file', file)
+    form.set('target_type', targetType)
+    form.set('target_id', targetId)
+    const { data, error: invokeError } = await supabase.functions.invoke('upload-payment-qr', {
+      body: form,
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+    if (invokeError) throw new Error('Secure QR upload service is unavailable. Please try again.')
+    if (data?.error) throw new Error(data.error)
+    if (!data?.qr_image_path) throw new Error('The secure QR upload did not return an image path.')
+    if (data.warning) setMessage(data.warning)
+    return data.qr_image_path as string
   }
 
   async function saveParent(event: FormEvent) {
@@ -115,13 +88,11 @@ export function PaymentSettings() {
     setSaving(true)
     let qrPath = draft.qr_path
     try {
-      if (qrFile) qrPath = await uploadQr(qrFile, draft.method)
-      const { error: saveError } = await supabase.from('payment_settings').upsert({ ...draft, qr_path: isBankTransfer ? null : qrPath || null, masked_account_name: isBankTransfer ? null : draft.masked_account_name.trim() || null, masked_account_number: isBankTransfer ? null : draft.masked_account_number.trim() || null, updated_at: new Date().toISOString() }, { onConflict: 'method' })
+      const { data: savedParent, error: saveError } = await supabase.from('payment_settings').upsert({ ...draft, qr_path: isBankTransfer ? null : qrPath || null, masked_account_name: isBankTransfer ? null : draft.masked_account_name.trim() || null, masked_account_number: isBankTransfer ? null : draft.masked_account_number.trim() || null, updated_at: new Date().toISOString() }, { onConflict: 'method' }).select('id, qr_path').single()
       if (saveError) throw saveError
-      if (qrFile && draft.qr_path && draft.qr_path !== qrPath) await removeQr(draft.qr_path)
+      if (qrFile) qrPath = await uploadQr(qrFile, 'payment_method', savedParent.id)
       setDraft((current) => ({ ...current, qr_path: qrPath })); setQrFile(null); setMessage('Payment method saved.'); await load()
     } catch (caught) {
-      if (qrFile && qrPath && qrPath !== draft.qr_path) await removeQr(qrPath)
       setError(caught instanceof Error ? caught.message : 'Payment method could not be saved.')
     } finally { setSaving(false) }
   }
@@ -134,13 +105,15 @@ export function PaymentSettings() {
     setSaving(true)
     let qrPath = bankDraft.qr_path
     try {
-      if (bankQrFile) qrPath = await uploadQr(bankQrFile, `bank-${bankDraft.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`)
-      const { error: saveError } = await supabase.from('payment_method_options').upsert({ id: bankDraft.id, payment_method_id: selectedParent.id, name: bankDraft.name.trim(), masked_account_name: bankDraft.masked_account_name.trim(), masked_account_number: bankDraft.masked_account_number.trim(), qr_path: qrPath, enabled: bankDraft.enabled, sort_order: bankDraft.id ? (options.find((option) => option.id === bankDraft.id)?.sort_order ?? options.length) : options.length, updated_at: new Date().toISOString() })
+      const { data: savedOption, error: saveError } = await supabase.from('payment_method_options').upsert({ id: bankDraft.id, payment_method_id: selectedParent.id, name: bankDraft.name.trim(), masked_account_name: bankDraft.masked_account_name.trim(), masked_account_number: bankDraft.masked_account_number.trim(), qr_path: qrPath || null, enabled: bankQrFile && !bankDraft.id ? false : bankDraft.enabled, sort_order: bankDraft.id ? (options.find((option) => option.id === bankDraft.id)?.sort_order ?? options.length) : options.length, updated_at: new Date().toISOString() }).select('id').single()
       if (saveError) throw saveError
-      if (bankQrFile && bankDraft.qr_path && bankDraft.qr_path !== qrPath) await removeQr(bankDraft.qr_path)
+      if (bankQrFile) {
+        qrPath = await uploadQr(bankQrFile, 'payment_method_option', savedOption.id)
+        const { error: enableError } = await supabase.from('payment_method_options').update({ enabled: bankDraft.enabled, updated_at: new Date().toISOString() }).eq('id', savedOption.id)
+        if (enableError) throw enableError
+      }
       setBankDraft(null); setBankQrFile(null); setMessage('Bank option saved.'); await load()
     } catch (caught) {
-      if (bankQrFile && qrPath && qrPath !== bankDraft.qr_path) await removeQr(qrPath)
       setError(caught instanceof Error ? caught.message : 'Bank option could not be saved.')
     } finally { setSaving(false) }
   }
@@ -160,16 +133,19 @@ export function PaymentSettings() {
   async function removeBank(option: BankOption) {
     if (!window.confirm(`Remove ${option.name}? Its QR image will also be removed.`)) return
     setError(null); setMessage(null)
-    const { error: deleteError } = await supabase.from('payment_method_options').delete().eq('id', option.id)
-    if (deleteError) return setError(deleteError.message)
-    await removeQr(option.qr_path)
-    setMessage('Bank option removed.'); await load()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return setError('No active administrator session.')
+    const form = new FormData()
+    form.set('action', 'delete'); form.set('target_type', 'payment_method_option'); form.set('target_id', option.id)
+    const { data, error: invokeError } = await supabase.functions.invoke('upload-payment-qr', { body: form, headers: { Authorization: `Bearer ${session.access_token}` } })
+    if (invokeError) return setError('Secure QR management service is unavailable. Please try again.')
+    if (data?.error) return setError(data.error)
+    setMessage(data?.message ?? 'Bank option removed.'); await load()
   }
 
   const bankOptions = selectedParent ? options.filter((option) => option.payment_method_id === selectedParent.id) : []
   return <div className={styles.paymentSettings}>
     {message && <p className={styles.successMessage} role="status">{message}</p>}{error && <p className={styles.errorMessage} role="alert">{error}</p>}
-    {uploadDiagnostic && <details className={styles.uploadDiagnostic}><summary>Payment QR upload diagnostics</summary><p>Bucket: {uploadDiagnostic.bucket}<br />Object path: {uploadDiagnostic.path}<br />Operation: {uploadDiagnostic.operation} (upsert: false)<br />User ID: {uploadDiagnostic.userId ?? 'No active session'}<br />app_metadata.role: {uploadDiagnostic.role ?? 'Not set'}<br />Storage error: {uploadDiagnostic.errorCode ?? 'Unknown'} — {uploadDiagnostic.errorMessage ?? 'Unknown error'}</p></details>}
     <form className={styles.form} onSubmit={saveParent}><section className={styles.formSection}><div className={styles.fieldGrid}>
       <div className={styles.field}><label htmlFor="payment-method">Payment method</label><select id="payment-method" value={draft.method} onChange={(event) => chooseMethod(event.target.value as PaymentMethod)} disabled={saving}><option value="gcash">GCash</option><option value="bank_transfer">Bank transfer</option><option value="cash_on_delivery">Cash on Delivery upfront fee</option></select></div>
       <div className={styles.field}><label htmlFor="payment-name">Payment method name</label><input id="payment-name" value={draft.display_name} onChange={(event) => setDraft((current) => ({ ...current, display_name: event.target.value }))} disabled={saving} /></div>
