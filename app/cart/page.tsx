@@ -1,2 +1,3 @@
 import { CartPage } from '../../components/CartPage'
-export default function Page(){return <main className="site-shell"><CartPage /></main>}
+import { CartPageHeader } from '../../components/CartPageHeader'
+export default function Page(){return <main className="site-shell"><CartPageHeader/><CartPage /></main>}

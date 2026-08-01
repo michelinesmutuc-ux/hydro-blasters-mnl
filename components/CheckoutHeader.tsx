@@ -1,0 +1,2 @@
+import Link from 'next/link'
+export function CheckoutHeader(){return <header className="checkout-header"><Link className="checkout-brand" href="/" aria-label="Hydro Blasters MNL home"><img src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL"/><span>Hydro Blasters MNL</span></Link><nav aria-label="Checkout navigation"><Link href="/cart">Back to Cart</Link><Link href="/shop">Continue Shopping</Link></nav></header>}

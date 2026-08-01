@@ -1,2 +1,3 @@
 import { GuestCheckout } from '../../components/GuestCheckout'
-export default function Page(){return <main className="site-shell"><GuestCheckout /></main>}
+import { CheckoutHeader } from '../../components/CheckoutHeader'
+export default function Page(){return <main className="site-shell"><CheckoutHeader/><GuestCheckout /></main>}
