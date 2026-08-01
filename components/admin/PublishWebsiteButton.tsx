@@ -6,7 +6,7 @@ import { requireAdminSession } from '../../lib/admin/auth'
 import { hasUnpublishedWebsiteChanges, isCatalogueWritePending, markWebsiteChangesPublished, WEBSITE_PUBLICATION_NEEDED_EVENT } from '../../lib/admin/publishing'
 import styles from './admin.module.css'
 
-export function PublishWebsiteButton() {
+export function PublishWebsiteButton({ label = 'Publish Website' }: { label?: string }) {
   const [isPublishing, setIsPublishing] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -64,7 +64,7 @@ export function PublishWebsiteButton() {
   return (
     <div className={styles.publishControl}>
       <button type="button" className={styles.secondaryButton} disabled={isPublishing} onClick={publishWebsite}>
-        {isPublishing ? 'Publishing...' : 'Publish Website'}
+        {isPublishing ? 'Publishing...' : label}
       </button>
       <p>Saved product changes stay in Supabase. Publishing rebuilds the public static product pages.</p>
       {hasUnpublishedChanges && <p className={styles.publishWarning} role="status">⚠️ You have unpublished website changes.</p>}

@@ -43,6 +43,14 @@ Deno.serve(async (request) => {
     const { data: target, error: targetError } = await targetQuery
     if (targetError || !target) return reply({ error: 'The selected payment setting no longer exists.' }, 404)
 
+    if (action === 'preview') {
+      const path = target.qr_path as string | null
+      if (!path) return reply({ error: 'No QR image has been saved for this setting.' }, 404)
+      const { data: signed, error: signedError } = await admin.storage.from('payment-qrs').createSignedUrl(path, 60)
+      if (signedError || !signed?.signedUrl) return reply({ error: 'QR preview URL could not be generated.' }, 500)
+      return reply({ signed_url: signed.signedUrl })
+    }
+
     if (action === 'delete') {
       if (targetType !== 'payment_method_option') return reply({ error: 'This payment setting cannot be deleted here.' }, 400)
       const oldPath = target.qr_path as string | null
