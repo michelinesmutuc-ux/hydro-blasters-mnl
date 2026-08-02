@@ -39,16 +39,16 @@ const peso = (value: number | string) => `₱${Number(value).toLocaleString('en-
 const readable = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const escapeTelegramHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 
-async function sendTelegramMessage(message: string) {
+async function sendTelegramRequest(endpoint: 'sendMessage' | 'sendPhoto', payload: Record<string, unknown>) {
   const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN')
   const chatId = Deno.env.get('TELEGRAM_CHAT_ID')
   if (!botToken || !chatId) return { ok: false, status: 503, code: 'not_configured' as const, safeResponse: 'Required Telegram secrets are missing.' }
 
   try {
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML', disable_web_page_preview: true }),
+      body: JSON.stringify({ chat_id: chatId, ...payload }),
     })
     if (response.ok) return { ok: true, status: response.status, code: 'sent' as const, safeResponse: 'Telegram accepted the message.' }
 
@@ -62,6 +62,25 @@ async function sendTelegramMessage(message: string) {
     console.error('Telegram could not be reached.', error)
     return { ok: false, status: 502, code: 'unreachable' as const, safeResponse: 'Telegram could not be reached.' }
   }
+}
+
+const sendTelegramMessage = (message: string) => sendTelegramRequest('sendMessage', {
+  text: message,
+  parse_mode: 'HTML',
+  disable_web_page_preview: true,
+})
+
+const sendTelegramPhoto = (photo: string, caption: string) => sendTelegramRequest('sendPhoto', {
+  photo,
+  caption,
+  parse_mode: 'HTML',
+})
+
+function getNotificationHeading(paymentMethod: string) {
+  if (paymentMethod === 'gcash') return '🔵 <b>PAYMENT PROOF RECEIVED</b>'
+  if (paymentMethod === 'bank_transfer') return '🏦 <b>PAYMENT PROOF RECEIVED</b>'
+  if (paymentMethod === 'cash_on_delivery') return '🚚 <b>COD PAYMENT RECEIVED</b>'
+  return '🏠 <b>NEW SHOWROOM ORDER</b>'
 }
 
 Deno.serve(async (request) => {
@@ -141,10 +160,30 @@ Deno.serve(async (request) => {
     const paymentLine = order.payment_method === 'bank_transfer' && order.selected_payment_option_name
       ? `${readable(order.payment_method)} (${escapeTelegramHtml(order.selected_payment_option_name)})`
       : readable(order.payment_method)
-    const message = `<b>🛒 NEW WEBSITE ORDER</b>\n\n<b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n<b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n<b>Items</b>\n${itemLines}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\nReview this order in Admin Orders.`
+    const notificationHeading = getNotificationHeading(order.payment_method)
+    const caption = `${notificationHeading}\n\n👤 <b>Customer</b>\n${escapeTelegramHtml(order.customer_name)}\n\n🧾 <b>Order</b>\n${escapeTelegramHtml(order.order_reference)}\n\n💳 <b>Payment</b>\n${paymentLine}\n\n💰 <b>Amount Due Now</b>\n${peso(order.upfront_amount)}\n\n📦 <b>Order Value</b>\n${peso(order.overall_total)}\n\n⏳ <b>Status</b>\n${readable(order.payment_status)}`
+    const message = `${notificationHeading}\n\n<b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n<b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n<b>Items</b>\n${itemLines}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\nReview this order in Admin Orders.`
 
-    const telegram = await sendTelegramMessage(message)
-    console.info('Order Telegram API response.', { orderId: order.id, orderReference: order.order_reference, httpStatus: telegram.status, result: telegram.code, safeResponse: telegram.safeResponse })
+    let telegram
+    if (order.payment_proof_path) {
+      const { data: signedProof, error: signedProofError } = await admin.storage
+        .from('payment-proofs')
+        .createSignedUrl(order.payment_proof_path, 120)
+
+      if (!signedProofError && signedProof?.signedUrl) {
+        const photoResult = await sendTelegramPhoto(signedProof.signedUrl, caption)
+        console.info('Order Telegram photo response.', { orderId: order.id, orderReference: order.order_reference, endpoint: 'sendPhoto', httpStatus: photoResult.status, result: photoResult.code, safeResponse: photoResult.safeResponse })
+        telegram = photoResult.ok ? photoResult : await sendTelegramMessage(message)
+        if (!photoResult.ok) console.info('Order Telegram photo fallback response.', { orderId: order.id, orderReference: order.order_reference, endpoint: 'sendMessage', httpStatus: telegram.status, result: telegram.code, safeResponse: telegram.safeResponse })
+      } else {
+        console.error('Order payment proof signed URL could not be created.', { orderId: order.id, orderReference: order.order_reference, message: signedProofError?.message ?? 'No signed URL returned.' })
+        telegram = await sendTelegramMessage(message)
+      }
+    } else {
+      telegram = await sendTelegramMessage(message)
+    }
+
+    console.info('Order Telegram final API response.', { orderId: order.id, orderReference: order.order_reference, httpStatus: telegram.status, result: telegram.code, safeResponse: telegram.safeResponse })
     if (!telegram.ok) {
       const safeError = telegram.code === 'not_configured' ? 'Telegram notification is not configured.' : telegram.code === 'unreachable' ? 'Telegram could not be reached.' : 'Telegram rejected the notification.'
       const { error: failedStatusError } = await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_error: safeError }).eq('id', order.id)
