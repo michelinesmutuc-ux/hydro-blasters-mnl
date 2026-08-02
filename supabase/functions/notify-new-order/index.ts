@@ -1,5 +1,4 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { escapeTelegramHtml, sendTelegramMessage } from '../_shared/telegram.ts'
 
 type Order = {
   id: string
@@ -32,6 +31,27 @@ type OrderItem = { product_name: string; quantity: number; line_total: number | 
 const json = (body: Record<string, string>, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 const peso = (value: number | string) => `₱${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const readable = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+const escapeTelegramHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+
+async function sendTelegramMessage(message: string) {
+  const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN')
+  const chatId = Deno.env.get('TELEGRAM_CHAT_ID')
+  if (!botToken || !chatId) return { ok: false, status: 503, code: 'not_configured' as const }
+
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML', disable_web_page_preview: true }),
+    })
+    return response.ok
+      ? { ok: true, status: response.status, code: 'sent' as const }
+      : { ok: false, status: response.status, code: 'rejected' as const }
+  } catch (error) {
+    console.error('Telegram could not be reached.', error)
+    return { ok: false, status: 502, code: 'unreachable' as const }
+  }
+}
 
 Deno.serve(async (request) => {
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
