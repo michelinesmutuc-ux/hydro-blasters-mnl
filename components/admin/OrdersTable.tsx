@@ -41,22 +41,42 @@ export function OrdersTable() {
 
   useEffect(() => { void load() }, [])
 
-  async function proof(path: string) {
-    const candidatePaths = [...new Set([path, path.replace(/^payment-proofs\//, '')])]
+  async function proof(order: Order) {
+    const storedPath = order.payment_proof_path?.trim() ?? ''
+    if (!storedPath || /^https?:\/\//i.test(storedPath) || storedPath.startsWith('/')) {
+      setError('Stored payment-proof path is invalid.')
+      return
+    }
+
+    const candidatePaths = [...new Set([storedPath, storedPath.replace(/^payment-proofs\//, '')])]
     let lastError: { message: string } | null = null
+    console.info('Payment proof link request.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', storedPath, candidatePaths })
 
     for (const candidatePath of candidatePaths) {
       const { data, error: proofError } = await supabase.storage
         .from('payment-proofs')
         .createSignedUrl(candidatePath, 60)
       if (!proofError && data?.signedUrl) {
+        if (candidatePath !== storedPath) {
+          const { error: repairError } = await supabase
+            .from('orders')
+            .update({ payment_proof_path: candidatePath, updated_at: new Date().toISOString() })
+            .eq('id', order.id)
+          if (repairError) console.warn('Payment proof path repair failed.', { orderId: order.id, message: repairError.message })
+        }
+        console.info('Payment proof signed link created.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', objectPath: candidatePath })
         window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
         return
       }
+      console.warn('Payment proof link failed.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', objectPath: candidatePath, message: proofError?.message ?? 'No signed URL returned.' })
       lastError = proofError
     }
 
-    setError(lastError?.message ?? 'Payment proof could not be found.')
+    if (/object not found/i.test(lastError?.message ?? '')) {
+      setError('Payment proof file is missing.')
+      return
+    }
+    setError(lastError ? 'Could not generate a secure proof link.' : 'Payment proof file is missing.')
   }
 
   async function update(order: Order, field: 'payment_status' | 'order_status', value: string) {
@@ -78,7 +98,8 @@ export function OrdersTable() {
     setRetryingOrderId(order.id)
     try {
       await requireAdminSession()
-      const { error: resetError } = await supabase
+      console.info('Retry Telegram requested.', { orderId: order.id, orderReference: order.order_reference, functionName: 'notify-new-order' })
+      const { data: requeuedOrder, error: resetError } = await supabase
         .from('orders')
         .update({
           telegram_notification_status: 'pending',
@@ -87,13 +108,25 @@ export function OrdersTable() {
         })
         .eq('id', order.id)
         .in('telegram_notification_status', ['failed', 'pending'])
+        .select('id')
+        .maybeSingle()
       if (resetError) throw resetError
+      if (!requeuedOrder) throw new Error('Telegram notification could not be queued for retry.')
 
       const { data, error: invokeError } = await supabase.functions.invoke('notify-new-order', {
         body: { orderId: order.id },
       })
-      if (invokeError) throw invokeError
+      if (invokeError) {
+        const response = (invokeError as { context?: Response }).context
+        const responseBody = response ? await response.clone().json().catch(() => null) as { error?: unknown } | null : null
+        const safeMessage = typeof responseBody?.error === 'string'
+          ? responseBody.error
+          : 'Notification failed. See admin diagnostics.'
+        console.error('Retry Telegram function failed.', { orderId: order.id, orderReference: order.order_reference, functionName: 'notify-new-order', httpStatus: response?.status ?? null, message: safeMessage })
+        throw new Error(safeMessage)
+      }
       if (data?.error) throw new Error(data.error)
+      console.info('Retry Telegram function completed.', { orderId: order.id, orderReference: order.order_reference, functionName: 'notify-new-order', response: data?.message ?? 'No message returned.' })
       await load()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Telegram notification could not be retried.')
@@ -126,7 +159,7 @@ export function OrdersTable() {
           <span className={styles.status}>Telegram {order.telegram_notification_status}</span>
           {notificationMayBeRetried && <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" disabled={retryingOrderId === order.id} onClick={() => void retryTelegram(order)}>{retryingOrderId === order.id ? 'Retrying…' : 'Retry Telegram'}</button>}
         </td>
-        <td>{order.payment_proof_path ? <button className={styles.tableAction} type="button" onClick={() => void proof(order.payment_proof_path!)}>View proof</button> : '—'}</td>
+        <td>{order.payment_proof_path ? <button className={styles.tableAction} type="button" onClick={() => void proof(order)}>View proof</button> : '—'}</td>
       </tr>
       })}</tbody>
     </table></div>

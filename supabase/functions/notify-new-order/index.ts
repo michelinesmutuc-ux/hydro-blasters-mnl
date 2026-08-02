@@ -28,7 +28,13 @@ type Order = {
 
 type OrderItem = { product_name: string; quantity: number; line_total: number | string }
 
-const json = (body: Record<string, string>, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json',
+}
+const json = (body: Record<string, string>, status = 200) => new Response(JSON.stringify(body), { status, headers: corsHeaders })
 const peso = (value: number | string) => `₱${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const readable = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const escapeTelegramHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -36,7 +42,7 @@ const escapeTelegramHtml = (value: string) => value.replaceAll('&', '&amp;').rep
 async function sendTelegramMessage(message: string) {
   const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN')
   const chatId = Deno.env.get('TELEGRAM_CHAT_ID')
-  if (!botToken || !chatId) return { ok: false, status: 503, code: 'not_configured' as const }
+  if (!botToken || !chatId) return { ok: false, status: 503, code: 'not_configured' as const, safeResponse: 'Required Telegram secrets are missing.' }
 
   try {
     const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
@@ -44,16 +50,22 @@ async function sendTelegramMessage(message: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML', disable_web_page_preview: true }),
     })
-    return response.ok
-      ? { ok: true, status: response.status, code: 'sent' as const }
-      : { ok: false, status: response.status, code: 'rejected' as const }
+    if (response.ok) return { ok: true, status: response.status, code: 'sent' as const, safeResponse: 'Telegram accepted the message.' }
+
+    const responseBody = await response.json().catch(() => null) as { error_code?: unknown; description?: unknown } | null
+    const safeResponse = {
+      error_code: typeof responseBody?.error_code === 'number' ? responseBody.error_code : null,
+      description: typeof responseBody?.description === 'string' ? responseBody.description : 'Telegram rejected the message.',
+    }
+    return { ok: false, status: response.status, code: 'rejected' as const, safeResponse }
   } catch (error) {
     console.error('Telegram could not be reached.', error)
-    return { ok: false, status: 502, code: 'unreachable' as const }
+    return { ok: false, status: 502, code: 'unreachable' as const, safeResponse: 'Telegram could not be reached.' }
   }
 }
 
 Deno.serve(async (request) => {
+  if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
 
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -99,11 +111,20 @@ Deno.serve(async (request) => {
     if (!claimed) return json({ message: 'Notification already handled.' })
     claimedOrderId = order.id
 
+    console.info('Order Telegram notification claimed.', {
+      orderId: order.id,
+      orderReference: order.order_reference,
+      functionName: 'notify-new-order',
+      telegramBotTokenConfigured: Boolean(Deno.env.get('TELEGRAM_BOT_TOKEN')),
+      telegramChatIdConfigured: Boolean(Deno.env.get('TELEGRAM_CHAT_ID')),
+    })
+
     const { data: items, error: itemsError } = await admin
       .from('order_items')
       .select('product_name,quantity,line_total')
       .eq('order_id', order.id)
     if (itemsError || !items?.length) throw itemsError ?? new Error('Order items are missing.')
+    console.info('Order Telegram items loaded.', { orderId: order.id, orderReference: order.order_reference, itemCount: items.length })
 
     const itemLines = (items as OrderItem[]).map((item) => `• ${escapeTelegramHtml(item.product_name)} × ${item.quantity} — ${peso(item.line_total)}`).join('\n')
     const address = [order.city_municipality, order.region].filter(Boolean).join(', ') || 'Not provided'
@@ -123,20 +144,23 @@ Deno.serve(async (request) => {
     const message = `<b>🛒 NEW WEBSITE ORDER</b>\n\n<b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n<b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n<b>Items</b>\n${itemLines}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\nReview this order in Admin Orders.`
 
     const telegram = await sendTelegramMessage(message)
+    console.info('Order Telegram API response.', { orderId: order.id, orderReference: order.order_reference, httpStatus: telegram.status, result: telegram.code, safeResponse: telegram.safeResponse })
     if (!telegram.ok) {
       const safeError = telegram.code === 'not_configured' ? 'Telegram notification is not configured.' : telegram.code === 'unreachable' ? 'Telegram could not be reached.' : 'Telegram rejected the notification.'
-      await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_error: safeError }).eq('id', order.id)
+      const { error: failedStatusError } = await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_error: safeError }).eq('id', order.id)
+      console.info('Order Telegram failure status update.', { orderId: order.id, orderReference: order.order_reference, updated: !failedStatusError })
       console.error('Order Telegram notification failed.', { orderId: order.id, orderReference: order.order_reference, stage: 'send', telegramStatus: telegram.status, code: telegram.code })
       return json({ error: 'Telegram notification was not sent.' }, 502)
     }
 
     const { error: sentError } = await admin.from('orders').update({ telegram_notification_status: 'sent', telegram_notification_sent_at: new Date().toISOString(), telegram_notification_error: null }).eq('id', order.id)
     if (sentError) throw sentError
+    console.info('Order Telegram sent status update.', { orderId: order.id, orderReference: order.order_reference, updated: true })
     return json({ message: 'Telegram notification sent.' }, 201)
   } catch (error) {
     console.error('Order notification failed.', error)
     if (claimedOrderId) {
-      await admin
+      const { error: failedStatusError } = await admin
         .from('orders')
         .update({
           telegram_notification_status: 'failed',
@@ -144,6 +168,7 @@ Deno.serve(async (request) => {
         })
         .eq('id', claimedOrderId)
         .eq('telegram_notification_status', 'pending')
+      console.error('Order Telegram fallback failure status update.', { orderId: claimedOrderId, updated: !failedStatusError })
     }
     return json({ error: 'Telegram notification was not sent.' }, 500)
   }
