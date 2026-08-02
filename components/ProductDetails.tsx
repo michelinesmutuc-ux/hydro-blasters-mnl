@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { ProductImageFrame } from './ProductImageFrame'
 import { AddToCartButton } from './AddToCartButton'
 import { CompareButton } from './CompareButton'
+import { ProductHelpCallout } from './ProductHelpCallout'
 
 export type Product = {
   id: string
@@ -63,6 +64,7 @@ export function ProductDetails({ product, specificationRows = [], error }: { pro
           {product.short_description && <p className="product-short-description">{product.short_description}</p>}
           {descriptionParagraphs.length > 0 && <div className="product-description"><h2>Description</h2>{descriptionParagraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
           {specificationRows.length > 0 && <section className="product-specifications"><h2>Specifications</h2><dl>{specificationRows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl></section>}
+          <ProductHelpCallout specifications={specificationRows} />
         </div>
       </div>
     </section>
