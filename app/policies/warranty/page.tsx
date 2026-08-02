@@ -11,3 +11,6 @@ export default function WarrantyPage() {
     <section><h2>Liability limitation</h2><p>Hydro Blasters MNL’s responsibility under this limited warranty is limited to the approved repair, replacement part, or product replacement. Hydro Blasters MNL is not responsible for losses or damage caused by misuse, unsafe handling, unauthorized modifications, or use outside the product’s intended purpose, to the extent allowed by applicable law.</p><p><Link href="/help/getting-started">Read Getting Started</Link> · <Link href="/policies/shipping">Shipping Policy</Link> · <Link href="/help/faq">FAQ</Link></p></section>
   </HelpCenterShell>
 }
+import { createPageMetadata } from '../../../lib/seo'
+
+export const metadata = createPageMetadata({ title: 'Warranty Policy | Hydro Blasters MNL', description: 'Read Hydro Blasters MNL warranty coverage, care guidance, and the warranty claim process.', path: '/policies/warranty' })

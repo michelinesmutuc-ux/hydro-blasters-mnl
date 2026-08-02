@@ -2,27 +2,18 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { CartProvider } from '../components/CartProvider'
 import { ComparisonProvider } from '../components/ComparisonProvider'
+import { createPageMetadata, siteName, siteUrl } from '../lib/seo'
 
 export const metadata: Metadata = {
-  title: 'Hydro Blasters MNL | Gel Blasters & Accessories',
-  description:
-    'Shop gel blasters, accessories, and magazines at Hydro Blasters MNL. Compare products, learn through our Help Center, and book a visit to our appointment-based showroom in Pasay City.',
+  ...createPageMetadata({
+    title: 'Hydro Blasters MNL | Pasay',
+    description: 'Hydro Blasters MNL is a Philippine gel blaster retailer based in Pasay offering beginner-friendly and hobby-grade gel blasters, nationwide shipping, and a showroom available by appointment.',
+  }),
   applicationName: 'Hydro Blasters MNL',
+  metadataBase: siteUrl,
+  title: { default: 'Hydro Blasters MNL | Pasay', template: `%s | ${siteName}` },
   icons: {
     icon: '/icon.png',
-  },
-  openGraph: {
-    type: 'website',
-    siteName: 'Hydro Blasters MNL',
-    title: 'Hydro Blasters MNL | Gel Blasters & Accessories',
-    description:
-      'Shop gel blasters, accessories, and magazines at Hydro Blasters MNL. Compare products, learn through our Help Center, and book a visit to our appointment-based showroom in Pasay City.',
-  },
-  twitter: {
-    card: 'summary',
-    title: 'Hydro Blasters MNL | Gel Blasters & Accessories',
-    description:
-      'Shop gel blasters, accessories, and magazines at Hydro Blasters MNL. Compare products, learn through our Help Center, and book a visit to our appointment-based showroom in Pasay City.',
   },
 }
 

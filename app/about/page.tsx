@@ -29,3 +29,6 @@ export default function AboutPage() {
     <SiteFooter />
   </div>
 }
+import { createPageMetadata } from '../../lib/seo'
+
+export const metadata = createPageMetadata({ title: 'About Us | Hydro Blasters MNL', description: 'Learn the story, philosophy, and showroom journey of Hydro Blasters MNL in Pasay.', path: '/about' })

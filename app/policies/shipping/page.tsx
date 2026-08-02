@@ -11,3 +11,6 @@ export default function ShippingPolicyPage() {
     <section><h2>Cash on Delivery</h2><p>For COD orders:</p><ul><li>Nationwide shipping and the 1% COD service fee are due now.</li><li>The merchandise amount is paid to the courier upon delivery.</li><li>COD orders are processed only after the amount due now is verified.</li></ul><p><Link href="/checkout">Continue to checkout</Link> or <Link href="/help/faq">read the FAQ</Link>.</p></section>
   </HelpCenterShell>
 }
+import { createPageMetadata } from '../../../lib/seo'
+
+export const metadata = createPageMetadata({ title: 'Shipping Policy | Hydro Blasters MNL', description: 'Read delivery and shipping information for Hydro Blasters MNL orders.', path: '/policies/shipping' })

@@ -26,3 +26,6 @@ export default function VisitShowroomPage() {
     <SiteFooter />
   </div>
 }
+import { createPageMetadata } from '../../lib/seo'
+
+export const metadata = createPageMetadata({ title: 'Visit Our Showroom | Hydro Blasters MNL', description: 'Plan an appointment-based visit to the Hydro Blasters MNL showroom in Pasay City.', path: '/visit-showroom' })

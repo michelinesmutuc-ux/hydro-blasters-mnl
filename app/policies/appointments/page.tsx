@@ -11,3 +11,6 @@ export default function AppointmentPolicyPage() {
     <section><h2>Arrival and changes</h2><p>Customers should contact Hydro Blasters MNL if they need to cancel, reschedule, or expect to arrive late.</p><p><Link href="/appointments">Book a Showroom Visit</Link> · <Link href="/shop">Shop Products</Link> · <Link href="/compare">Compare Products</Link></p></section>
   </HelpCenterShell>
 }
+import { createPageMetadata } from '../../../lib/seo'
+
+export const metadata = createPageMetadata({ title: 'Showroom Appointment Policy | Hydro Blasters MNL', description: 'Read the appointment guidance for visiting the Hydro Blasters MNL showroom.', path: '/policies/appointments' })

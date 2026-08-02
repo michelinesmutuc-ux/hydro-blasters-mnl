@@ -22,3 +22,6 @@ export default function GettingStartedPage() {
     <section><h2>Repairs and upgrades</h2><p>For repairs and upgrades, customers may contact Hydro Blasters MNL for guidance regarding the current partner technician and available service arrangements.</p><p><Link href="/policies/warranty">Read the Limited Warranty Policy</Link> or <Link href="/shop">browse the catalogue</Link>.</p></section>
   </HelpCenterShell>
 }
+import { createPageMetadata } from '../../../lib/seo'
+
+export const metadata = createPageMetadata({ title: 'Getting Started Guide | Hydro Blasters MNL', description: 'Learn gel blaster basics, toy grade versus hobby grade, batteries, maintenance, and choosing your first unit.', path: '/help/getting-started' })

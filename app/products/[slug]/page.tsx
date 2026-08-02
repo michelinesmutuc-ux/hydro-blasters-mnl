@@ -4,8 +4,17 @@ import { fetchActiveProductBySlug } from '../../../lib/supabase/products'
 import { fetchProductSpecifications } from '../../../lib/supabase/product-specifications'
 import { CartLink } from '../../../components/CartLink'
 import { SiteFooter } from '../../../components/SiteFooter'
+import type { Metadata } from 'next'
+import { createPageMetadata, productDescription } from '../../../lib/seo'
 
 export const dynamicParams = false
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params
+  const { data } = await fetchActiveProductBySlug(slug)
+  if (!data) return createPageMetadata({ title: 'Product unavailable', description: 'This Hydro Blasters MNL product is not currently available.', path: `/products/${slug}` })
+  return createPageMetadata({ title: `${data.name} | Hydro Blasters MNL`, description: productDescription(data), path: `/products/${data.slug}`, image: data.image_urls?.[0] })
+}
 
 export async function generateStaticParams() {
   const { data, error } = await supabase

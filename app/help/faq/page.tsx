@@ -57,3 +57,6 @@ export default function FaqPage() {
     <section><h2>Read the full policies</h2><p><Link href="/help/getting-started">Getting Started</Link> · <Link href="/policies/warranty">Warranty Policy</Link> · <Link href="/policies/shipping">Shipping Policy</Link> · <Link href="/policies/appointments">Appointment Policy</Link></p></section>
   </HelpCenterShell>
 }
+import { createPageMetadata } from '../../../lib/seo'
+
+export const metadata = createPageMetadata({ title: 'Frequently Asked Questions | Hydro Blasters MNL', description: 'Answers to common questions about gel blasters, orders, showroom visits, warranty, and care.', path: '/help/faq' })

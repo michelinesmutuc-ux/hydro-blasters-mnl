@@ -1,6 +1,9 @@
 import { ShopProducts } from '../../components/ShopProducts'
 import { CartLink } from '../../components/CartLink'
 import { SiteFooter } from '../../components/SiteFooter'
+import { createPageMetadata } from '../../lib/seo'
+
+export const metadata = createPageMetadata({ title: 'Shop Gel Blasters | Hydro Blasters MNL', description: 'Browse beginner-friendly and upgradeable gel blasters, accessories, and magazines from Hydro Blasters MNL.', path: '/shop' })
 
 export default function ShopPage() {
   return (
