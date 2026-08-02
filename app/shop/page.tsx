@@ -5,6 +5,7 @@ import { createPageMetadata } from '../../lib/seo'
 import { JsonLd } from '../../components/JsonLd'
 import { breadcrumbStructuredData } from '../../lib/seo/structured-data'
 import { PrimaryNavigation } from '../../components/PrimaryNavigation'
+import { AnnouncementBar } from '../../components/AnnouncementBar'
 
 export const metadata = createPageMetadata({ title: 'Shop Gel Blasters | Hydro Blasters MNL', description: 'Browse beginner-friendly and upgradeable gel blasters, accessories, and magazines from Hydro Blasters MNL.', path: '/shop' })
 
@@ -12,7 +13,7 @@ export default function ShopPage() {
   return (
     <div className="site-shell">
       <JsonLd data={breadcrumbStructuredData([{ name: 'Home', path: '/' }, { name: 'Shop', path: '/shop' }])} />
-      <div className="announcement"><span aria-hidden="true" />STORE INFORMATION COMING SOON</div>
+      <AnnouncementBar />
       <header className="site-header">
         <a className="brand" href="/" aria-label="Go to Home"><img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span className="brand-home-label" aria-hidden="true">Home</span></a>
         <PrimaryNavigation />
