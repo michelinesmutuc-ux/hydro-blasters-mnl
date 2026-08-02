@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
 import { deleteProductImages } from '../../lib/supabase/product-images'
@@ -36,6 +36,9 @@ export function ProductsTable() {
   const [notice, setNotice] = useState<string | null>(null)
   const [workingId, setWorkingId] = useState<string | null>(null)
   const [workingToggle, setWorkingToggle] = useState<{ id: string; field: 'is_active' | 'featured' } | null>(null)
+  const [savingStockId, setSavingStockId] = useState<string | null>(null)
+  const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({})
+  const stockSaveLock = useRef<string | null>(null)
 
   const loadProducts = useCallback(async () => {
     setLoading(true)
@@ -137,6 +140,57 @@ export function ProductsTable() {
     setWorkingToggle(null)
   }
 
+  async function saveStock(product: Product, draft: string) {
+    if (savingStockId === product.id || stockSaveLock.current === product.id) return
+    if (!/^\d+$/.test(draft)) {
+      setStockDrafts((current) => ({ ...current, [product.id]: String(product.stock) }))
+      setError('Stock must be a whole number of zero or more.')
+      return
+    }
+    const nextStock = Number(draft)
+    if (!Number.isSafeInteger(nextStock) || nextStock < 0) {
+      setStockDrafts((current) => ({ ...current, [product.id]: String(product.stock) }))
+      setError('Stock must be a whole number of zero or more.')
+      return
+    }
+    if (nextStock === product.stock) {
+      setStockDrafts((current) => ({ ...current, [product.id]: String(product.stock) }))
+      return
+    }
+
+    stockSaveLock.current = product.id
+    setSavingStockId(product.id)
+    setError(null)
+    setNotice(null)
+    try {
+      await requireAdminSession()
+      const { data, error: updateError } = await supabase
+        .from('products')
+        .update({ stock: nextStock, updated_at: new Date().toISOString() })
+        .eq('id', product.id)
+        .select('id,stock')
+        .single()
+      if (updateError || !data) throw updateError ?? new Error('Stock update did not return a product.')
+      setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id ? { ...currentProduct, stock: data.stock } : currentProduct))
+      setStockDrafts((current) => ({ ...current, [product.id]: String(data.stock) }))
+      markWebsiteChangesUnpublished()
+      setNotice('Stock saved. Publish the website to update the public storefront.')
+    } catch (caught) {
+      setStockDrafts((current) => ({ ...current, [product.id]: String(product.stock) }))
+      setError(`Stock for ${product.name} was not saved. ${caught instanceof Error ? caught.message : 'Please try again.'}`)
+    } finally {
+      stockSaveLock.current = null
+      setSavingStockId(null)
+    }
+  }
+
+  function stockStatus(stock: number) {
+    if (stock >= 5) return { label: 'In Stock', tone: styles.stockHealthy }
+    if (stock >= 3) return { label: 'Low Stock', tone: styles.stockLow }
+    if (stock >= 1) return { label: 'Very Low Stock', tone: styles.stockVeryLow }
+    return { label: 'Out of Stock', tone: styles.stockOut }
+  }
+
   return (
     <section className={styles.panel}>
       <div className={styles.panelHeader}><h2>All products</h2><span>{loading ? 'Loading products…' : `${products.length} product${products.length === 1 ? '' : 's'}`}</span></div>
@@ -147,7 +201,10 @@ export function ProductsTable() {
         const isWorking = workingId === product.id
         const activeIsUpdating = workingToggle?.id === product.id && workingToggle.field === 'is_active'
         const featuredIsUpdating = workingToggle?.id === product.id && workingToggle.field === 'featured'
-        return <tr key={product.id}><td>{product.image_urls[0] ? <img className={styles.tableImage} src={product.image_urls[0]} alt="" /> : <div className={styles.thumbnail}>Image</div>}</td><td>{product.name}</td><td className={styles.placeholderText}>{product.brand ?? '—'}</td><td>{product.category}</td><td>{product.price}</td><td>{product.stock}</td><td><span className={styles.status}>{statusLabel(product.status)}</span></td><td><button type="button" className={`${styles.quickToggle} ${product.is_active ? styles.quickToggleOn : ''}`} aria-pressed={product.is_active} aria-label={`Set ${product.name} ${product.is_active ? 'inactive' : 'active'}`} disabled={isWorking || activeIsUpdating} onClick={() => toggleProductField(product, 'is_active')}><span aria-hidden="true" />{activeIsUpdating ? 'Saving…' : product.is_active ? 'Active' : 'Inactive'}</button></td><td><button type="button" className={`${styles.quickToggle} ${product.featured ? styles.quickToggleOn : ''}`} aria-pressed={product.featured} aria-label={`${product.featured ? 'Remove' : 'Set'} ${product.name} as featured`} disabled={isWorking || featuredIsUpdating} onClick={() => toggleProductField(product, 'featured')}><span aria-hidden="true" />{featuredIsUpdating ? 'Saving…' : product.featured ? 'Featured' : 'Not featured'}</button></td><td><div className={styles.tableActions}><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Edit</a><button className={styles.tableAction} type="button" disabled={isWorking} onClick={() => duplicateProduct(product)}>{isWorking ? 'Working…' : 'Duplicate'}</button><button className={`${styles.tableAction} ${styles.deleteAction}`} type="button" disabled={isWorking} onClick={() => deleteProduct(product)}>{isWorking ? 'Working…' : 'Delete'}</button></div></td></tr>
+        const stockIsSaving = savingStockId === product.id
+        const stockInfo = stockStatus(product.stock)
+        const stockDraft = stockDrafts[product.id] ?? String(product.stock)
+        return <tr key={product.id}><td>{product.image_urls[0] ? <img className={styles.tableImage} src={product.image_urls[0]} alt="" /> : <div className={styles.thumbnail}>Image</div>}</td><td>{product.name}</td><td className={styles.placeholderText}>{product.brand ?? '—'}</td><td>{product.category}</td><td>{product.price}</td><td><div className={styles.stockControl}><div><button type="button" aria-label={`Decrease ${product.name} stock`} disabled={stockIsSaving || product.stock === 0} onClick={() => void saveStock(product, String(product.stock - 1))}>−</button><input aria-label={`${product.name} stock`} inputMode="numeric" pattern="[0-9]*" value={stockDraft} disabled={stockIsSaving} onChange={(event) => setStockDrafts((current) => ({ ...current, [product.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveStock(product, stockDraft) } if (event.key === 'Escape') { event.preventDefault(); setStockDrafts((current) => ({ ...current, [product.id]: String(product.stock) })); event.currentTarget.blur() } }} onBlur={() => { if (stockDraft !== String(product.stock)) void saveStock(product, stockDraft) }} /><button type="button" aria-label={`Increase ${product.name} stock`} disabled={stockIsSaving} onClick={() => void saveStock(product, String(product.stock + 1))}>+</button></div><span className={stockInfo.tone}>{stockIsSaving ? 'Saving…' : stockInfo.label}</span></div></td><td><span className={styles.status}>{statusLabel(product.status)}</span></td><td><button type="button" className={`${styles.quickToggle} ${product.is_active ? styles.quickToggleOn : ''}`} aria-pressed={product.is_active} aria-label={`Set ${product.name} ${product.is_active ? 'inactive' : 'active'}`} disabled={isWorking || activeIsUpdating} onClick={() => toggleProductField(product, 'is_active')}><span aria-hidden="true" />{activeIsUpdating ? 'Saving…' : product.is_active ? 'Active' : 'Inactive'}</button></td><td><button type="button" className={`${styles.quickToggle} ${product.featured ? styles.quickToggleOn : ''}`} aria-pressed={product.featured} aria-label={`${product.featured ? 'Remove' : 'Set'} ${product.name} as featured`} disabled={isWorking || featuredIsUpdating} onClick={() => toggleProductField(product, 'featured')}><span aria-hidden="true" />{featuredIsUpdating ? 'Saving…' : product.featured ? 'Featured' : 'Not featured'}</button></td><td><div className={styles.tableActions}><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Edit</a><button className={styles.tableAction} type="button" disabled={isWorking} onClick={() => duplicateProduct(product)}>{isWorking ? 'Working…' : 'Duplicate'}</button><button className={`${styles.tableAction} ${styles.deleteAction}`} type="button" disabled={isWorking} onClick={() => deleteProduct(product)}>{isWorking ? 'Working…' : 'Delete'}</button></div></td></tr>
       })}</tbody></table></div>}
     </section>
   )
