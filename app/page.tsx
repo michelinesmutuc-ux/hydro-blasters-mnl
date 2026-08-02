@@ -14,10 +14,11 @@ export default function Home() {
         <nav aria-label="Primary navigation">
           <a href="/shop">Shop</a>
           <a href="#categories">Categories</a>
-          <a href="#about">About</a>
+          <a href="/about">About</a>
         </nav>
         <div className="header-actions">
           <a className="mobile-shop-link" href="/shop">Shop</a>
+          <a className="mobile-about-link" href="/about">About</a>
           <button className="icon-button" type="button" aria-label="Search">⌕</button>
           <CartLink />
         </div>
