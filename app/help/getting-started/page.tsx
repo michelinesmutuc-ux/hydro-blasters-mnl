@@ -18,7 +18,7 @@ export default function GettingStartedPage() {
     <section><h2>Empty the magazine after use</h2><p>Remove remaining gel balls after using the unit. Gel balls left inside a magazine can shrink, deform, or contribute to feeding and jamming problems.</p></section>
     <HelpTip><h2>Hydro Tip</h2><p>Empty your magazine after every game to help prevent future feeding problems.</p></HelpTip>
     <section><h2>Avoid dry firing</h2><p>Avoid repeatedly firing the unit without properly prepared gel balls. Excessive dry firing may contribute to unnecessary wear, air-seal issues, or poor compression depending on the unit.</p></section>
-    <section><h2>Semi-auto use</h2><p>Repeated rapid semi-auto firing may draw additional power and generate heat in some units. Use rapid semi-auto responsibly and allow the unit to cool if it becomes unusually warm.</p></section>
+    <section><h2>Semi-auto use</h2><p>We do not recommend rapid repeated use of semi-auto mode. Rapid semi-auto firing draws more power and can generate additional heat in the trigger contacts, wiring, and related electrical components.</p><p>Customers should use semi-auto at a sensible pace and allow the unit to cool if it becomes unusually warm. Repeated rapid use increases electrical stress and is not recommended, although it does not mean immediate failure will always occur.</p></section>
     <section><h2>Repairs and upgrades</h2><p>For repairs and upgrades, customers may contact Hydro Blasters MNL for guidance regarding the current partner technician and available service arrangements.</p><p><Link href="/policies/warranty">Read the Limited Warranty Policy</Link> or <Link href="/shop">browse the catalogue</Link>.</p></section>
   </HelpCenterShell>
 }

@@ -14,7 +14,7 @@ type PaymentMethod = 'gcash' | 'bank_transfer' | 'cash_on_delivery' | 'pay_upon_
 const paymentMethods: { id: PaymentMethod; name: string; description: string }[] = [
   { id: 'gcash', name: 'GCash', description: 'Pay instantly using the GCash QR.' },
   { id: 'bank_transfer', name: 'Bank Transfer', description: 'Transfer using your preferred bank.' },
-  { id: 'cash_on_delivery', name: 'Cash on Delivery', description: 'Pay the merchandise amount upon delivery. Shipping and COD fees are paid in advance.' },
+  { id: 'cash_on_delivery', name: 'Cash on Delivery', description: 'Pay the merchandise amount upon delivery. Shipping and COD fees are due now.' },
   { id: 'pay_upon_pickup', name: 'Showroom Pickup', description: 'Reserve online and pay according to the selected pickup payment option.' },
 ]
 
@@ -45,7 +45,7 @@ export function GuestCheckout() {
   const shipping = delivery === 'nationwide_delivery' ? (bulky ? 199 : 149) : 0
   const codFee = payment === 'cash_on_delivery' ? Math.ceil(subtotal * .01) : 0
   const pickup = payment === 'pay_upon_pickup'
-  const upfront = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : subtotal + shipping
+  const dueNow = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : subtotal + shipping
   const proofNeeded = !pickup
 
   if (!lines.length) return <section className="section"><h1>Your cart is empty</h1></section>
@@ -129,8 +129,8 @@ export function GuestCheckout() {
           <div className="payment-methods" role="radiogroup" aria-label="Payment method">
             {paymentMethods.map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.description}</small></span></button>)}
           </div>
-          {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><div><span>Shipping fee</span><strong>{peso(shipping)}</strong></div><div><span>COD service fee</span><strong>{peso(codFee)}</strong></div><div><span>Amount payable upfront</span><strong>{peso(upfront)}</strong></div><div><span>Amount payable to rider</span><strong>{peso(subtotal)}</strong></div></div>}
-          {payment && proofNeeded && <PaymentQr method={payment} amount={upfront} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
+          {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><div><span>Shipping fee</span><strong>{peso(shipping)}</strong></div><div><span>COD service fee</span><strong>{peso(codFee)}</strong></div><div><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div></div>}
+          {payment && proofNeeded && <PaymentQr method={payment} amount={dueNow} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
           {payment && proofNeeded && qrAvailable && <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input required type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proof && <img src={URL.createObjectURL(proof)} alt="Payment screenshot preview" />}</div>}
           {payment === 'pay_upon_pickup' && <label className="checkout-check"><input type="checkbox" checked={reservation} onChange={(event) => setReservation(event.target.checked)} /> I understand that this is only a reservation request and I must wait for Hydro Blasters MNL to confirm before visiting.</label>}
           {payment === 'cash_on_delivery' && <label className="checkout-check"><input type="checkbox" checked={codConfirm} onChange={(event) => setCodConfirm(event.target.checked)} /> I understand that my COD order will only be processed after the shipping fee and COD service fee are paid and verified.</label>}

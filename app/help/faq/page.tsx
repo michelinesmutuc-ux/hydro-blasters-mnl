@@ -30,7 +30,7 @@ const sections = [
   { title: 'Orders and shipping', items: [
     ['Do you ship nationwide?', 'Yes. See the Shipping Policy for the current nationwide flat rates.'],
     ['How much is shipping?', 'Accessories and magazines only are ₱149. Orders containing a gel blaster or bulky item use the ₱199 rate.'],
-    ['How does Cash on Delivery work?', 'Nationwide shipping and the 1% COD service fee are paid in advance. The merchandise amount is paid to the courier upon delivery.'],
+    ['How does Cash on Delivery work?', 'Nationwide shipping and the 1% COD service fee are due now. The merchandise amount is paid to the courier upon delivery.'],
     ['Why do I need to upload proof of payment?', 'It helps Hydro Blasters MNL verify required prepaid amounts before processing the order.'],
     ['How long does payment verification take?', 'Payment verification may take up to 24 hours.'],
   ] },
@@ -47,6 +47,7 @@ const sections = [
     ['How do I submit a warranty claim?', 'Contact the official Facebook account, provide order details and a clear video of the issue, then follow the assessment instructions.'],
     ['Who pays the cost of sending the unit for inspection?', 'The customer is responsible for shipping the item to the designated service location.'],
     ['Can Hydro Blasters MNL assist with repairs and upgrades?', 'You may contact Hydro Blasters MNL for guidance on the current partner technician and available service arrangements.'],
+    ['Do you sell repair and upgrade parts?', 'At the moment, we only carry selected spare magazines and a small collection of attachments. We hope to offer more repair and upgrade parts in the future. Please continue checking our website, as new parts will be added to the catalogue once they become available.'],
   ] },
 ] as const
 
