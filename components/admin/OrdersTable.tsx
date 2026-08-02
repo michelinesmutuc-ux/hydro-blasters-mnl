@@ -37,16 +37,31 @@ type ProofDiagnostic = {
   message: string
 }
 
-function getProofPathCandidates(storedPath: string) {
+function isValidStoredProofPath(storedPath: string) {
   const normalizedPath = storedPath.trim()
-  if (!normalizedPath || /^https?:\/\//i.test(normalizedPath) || normalizedPath.startsWith('/')) return []
-  const innerPath = normalizedPath.replace(/^(?:payment-proofs|payment\/proofs)\//, '')
-  return [...new Set([
-    normalizedPath,
-    innerPath,
-    `payment-proofs/${innerPath}`,
-    `payment/proofs/${innerPath}`,
-  ])]
+  return Boolean(normalizedPath) && !/^https?:\/\//i.test(normalizedPath) && !normalizedPath.startsWith('/')
+}
+
+async function findMatchingProofObjects(order: Order, storedPath: string) {
+  const fileName = storedPath.split('/').pop()
+  if (!fileName) return []
+
+  const storedFolder = storedPath.split('/').slice(0, -1).join('/')
+  const folders = [...new Set([
+    storedFolder,
+    `orders/${order.order_reference}`,
+    `payment-proofs/${order.order_reference}`,
+    `payment-proofs/orders/${order.order_reference}`,
+  ].filter(Boolean))]
+
+  const listings = await Promise.all(folders.map(async (folder) => {
+    const { data } = await supabase.storage.from('payment-proofs').list(folder, { limit: 100 })
+    return (data ?? [])
+      .filter((object) => object.name === fileName)
+      .map((object) => `${folder}/${object.name}`)
+  }))
+
+  return [...new Set(listings.flat())]
 }
 
 export function OrdersTable() {
@@ -73,14 +88,13 @@ export function OrdersTable() {
 
   async function proof(order: Order) {
     const storedPath = order.payment_proof_path?.trim() ?? ''
-    const candidatePaths = getProofPathCandidates(storedPath)
-    if (!candidatePaths.length) {
+    if (!isValidStoredProofPath(storedPath)) {
       setProofDiagnostics((current) => ({ ...current, [order.id]: {
         orderId: order.id,
         orderReference: order.order_reference,
         storedPath,
         bucket: 'payment-proofs',
-        lookupPaths: [],
+        lookupPaths: [storedPath || 'None'],
         matchingObjects: [],
         objectExists: false,
         signedUrl: null,
@@ -90,73 +104,70 @@ export function OrdersTable() {
       return
     }
 
-    const foldersToInspect = [...new Set(candidatePaths.map((path) => path.split('/').slice(0, -1).join('/')).filter(Boolean))]
-    const objectListings = await Promise.all(foldersToInspect.map(async (folder) => {
-      const { data } = await supabase.storage.from('payment-proofs').list(folder, { limit: 100 })
-      return (data ?? []).map((object) => `${folder}/${object.name}`)
-    }))
-    const matchingObjects = objectListings.flat()
-    let lastError: { message: string } | null = null
-    console.info('Payment proof link request.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', storedPath, candidatePaths })
+    console.info('Payment proof link request.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', storedPath, lookupPath: storedPath })
+    const { data: exactSignedProof, error: exactProofError } = await supabase.storage
+      .from('payment-proofs')
+      .createSignedUrl(storedPath, 60)
 
-    for (const candidatePath of candidatePaths) {
-      const { data, error: proofError } = await supabase.storage
-        .from('payment-proofs')
-        .createSignedUrl(candidatePath, 60)
-      if (!proofError && data?.signedUrl) {
-        if (candidatePath !== storedPath) {
-          const { error: repairError } = await supabase
-            .from('orders')
-            .update({ payment_proof_path: candidatePath, updated_at: new Date().toISOString() })
-            .eq('id', order.id)
-          if (repairError) console.warn('Payment proof path repair failed.', { orderId: order.id, message: repairError.message })
-        }
-        console.info('Payment proof signed link created.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', objectPath: candidatePath })
-        setProofDiagnostics((current) => ({ ...current, [order.id]: {
-          orderId: order.id,
-          orderReference: order.order_reference,
-          storedPath,
-          bucket: 'payment-proofs',
-          lookupPaths: candidatePaths,
-          matchingObjects,
-          objectExists: true,
-          signedUrl: data.signedUrl,
-          message: candidatePath === storedPath ? 'Proof object found at the stored path.' : 'Proof object found at an alternate path. The saved path was repaired.',
-        } }))
-        window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
-        return
-      }
-      console.warn('Payment proof link failed.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', objectPath: candidatePath, message: proofError?.message ?? 'No signed URL returned.' })
-      lastError = proofError
-    }
-
-    if (/object not found/i.test(lastError?.message ?? '')) {
+    if (!exactProofError && exactSignedProof?.signedUrl) {
       setProofDiagnostics((current) => ({ ...current, [order.id]: {
         orderId: order.id,
         orderReference: order.order_reference,
         storedPath,
         bucket: 'payment-proofs',
-        lookupPaths: candidatePaths,
-        matchingObjects,
-        objectExists: false,
-        signedUrl: null,
-        message: 'Payment proof was not uploaded successfully for this order.',
+        lookupPaths: [storedPath],
+        matchingObjects: [storedPath],
+        objectExists: true,
+        signedUrl: exactSignedProof.signedUrl,
+        message: 'Proof object found at the stored path.',
       } }))
-      setError('Payment proof was not uploaded successfully for this order.')
+      window.open(exactSignedProof.signedUrl, '_blank', 'noopener,noreferrer')
       return
     }
+
+    const matchingObjects = await findMatchingProofObjects(order, storedPath)
+    if (matchingObjects.length === 1) {
+      const repairedPath = matchingObjects[0]
+      const { error: repairError } = await supabase
+        .from('orders')
+        .update({ payment_proof_path: repairedPath, updated_at: new Date().toISOString() })
+        .eq('id', order.id)
+      if (!repairError) {
+        const { data: repairedSignedProof, error: repairedProofError } = await supabase.storage
+          .from('payment-proofs')
+          .createSignedUrl(repairedPath, 60)
+        if (!repairedProofError && repairedSignedProof?.signedUrl) {
+          setProofDiagnostics((current) => ({ ...current, [order.id]: {
+            orderId: order.id,
+            orderReference: order.order_reference,
+            storedPath: repairedPath,
+            bucket: 'payment-proofs',
+            lookupPaths: [storedPath, repairedPath],
+            matchingObjects,
+            objectExists: true,
+            signedUrl: repairedSignedProof.signedUrl,
+            message: 'Proof object found under a legacy path. The saved database path was repaired.',
+          } }))
+          await load()
+          window.open(repairedSignedProof.signedUrl, '_blank', 'noopener,noreferrer')
+          return
+        }
+      }
+    }
+
     setProofDiagnostics((current) => ({ ...current, [order.id]: {
       orderId: order.id,
       orderReference: order.order_reference,
       storedPath,
       bucket: 'payment-proofs',
-      lookupPaths: candidatePaths,
+      lookupPaths: [storedPath],
       matchingObjects,
       objectExists: false,
       signedUrl: null,
-      message: 'Could not generate a secure proof link.',
+      message: matchingObjects.length > 1 ? 'More than one matching proof file was found. The saved path was not changed.' : 'Payment proof was not uploaded successfully for this order.',
     } }))
-    setError(lastError ? 'Could not generate a secure proof link.' : 'Payment proof file is missing.')
+    console.warn('Payment proof link failed.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', objectPath: storedPath, message: exactProofError?.message ?? 'No signed URL returned.', matchingObjects })
+    setError(matchingObjects.length > 1 ? 'More than one matching proof file was found. See admin diagnostics.' : 'Payment proof was not uploaded successfully for this order.')
   }
 
   async function update(order: Order, field: 'payment_status' | 'order_status', value: string) {
