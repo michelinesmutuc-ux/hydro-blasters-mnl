@@ -29,16 +29,13 @@ export default function Home() {
       <main id="top">
         <section className="hero">
           <div className="hero-copy">
-            <p className="eyebrow">Established 2021</p>
             <h1>Hydro Blasters MNL</h1>
-            <p className="hero-text">Toy gel blasters, parts, accessories, and support since 2021.</p>
+            <p className="hero-text">Browse. Compare. Learn.<br />Buy with confidence.</p>
+            <p className="hero-supporting-text">Appointment-based showroom <span aria-hidden="true">•</span> Established 2021</p>
             <div className="button-row">
-              <a className="primary-button" href="/shop">Browse the arsenal <span>→</span></a>
-              <a className="secondary-button" href="/appointments">Book a visit</a>
+              <a className="primary-button" href="/shop">Shop Products</a>
+              <a className="secondary-button" href="/appointments">Book a Showroom Visit</a>
             </div>
-          </div>
-          <div className="hero-placeholder" aria-label="Product image placeholder">
-            <span>Product image placeholder</span>
           </div>
         </section>
 
