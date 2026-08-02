@@ -42,7 +42,7 @@ Deno.serve(async (request) => {
     if (savedOrderError || !savedOrder) return reply({ error: 'Order could not be finalized. Please try again.' }, 500)
     if (proofRequired && !savedOrder.payment_proof_path) {
       const extension = body.payment_proof.contentType === 'image/png' ? 'png' : body.payment_proof.contentType === 'image/webp' ? 'webp' : 'jpg'
-      const path = `payment-proofs/${order.order_reference}/${crypto.randomUUID()}.${extension}`
+      const path = `orders/${order.order_reference}/${crypto.randomUUID()}.${extension}`
       const { error: uploadError } = await admin.storage.from('payment-proofs').upload(path, proofBytes!, { contentType: body.payment_proof.contentType, upsert: false })
       if (uploadError) { await admin.from('orders').delete().eq('id', order.order_id); return reply({ error: 'Payment proof upload failed. Your order was not created.' }, 500) }
       const { error: proofError } = await admin.from('orders').update({ payment_proof_path: path }).eq('id', order.order_id)
