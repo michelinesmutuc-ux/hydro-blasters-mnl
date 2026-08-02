@@ -2,6 +2,7 @@ import { PublicProducts } from '../components/PublicProducts'
 import { CartLink } from '../components/CartLink'
 import { SiteFooter } from '../components/SiteFooter'
 import { JsonLd } from '../components/JsonLd'
+import { PrimaryNavigation } from '../components/PrimaryNavigation'
 import { organizationStructuredData } from '../lib/seo/structured-data'
 
 export default function Home() {
@@ -14,18 +15,8 @@ export default function Home() {
           <img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" />
           <span className="brand-home-label" aria-hidden="true">Home</span>
         </a>
-        <nav aria-label="Primary navigation">
-          <a href="/shop">Shop</a>
-          <a href="#categories">Categories</a>
-          <a href="/about">About</a>
-          <a href="/visit-showroom">Visit Showroom</a>
-          <a href="/track-order">Track Order</a>
-        </nav>
+        <PrimaryNavigation />
         <div className="header-actions">
-          <a className="mobile-shop-link" href="/shop">Shop</a>
-          <a className="mobile-about-link" href="/about">About</a>
-          <a className="mobile-visit-link" href="/visit-showroom">Visit</a>
-          <a className="mobile-track-link" href="/track-order">Track Order</a>
           <button className="icon-button" type="button" aria-label="Search">⌕</button>
           <CartLink />
         </div>
