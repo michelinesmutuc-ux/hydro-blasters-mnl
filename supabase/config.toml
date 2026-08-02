@@ -12,3 +12,6 @@ verify_jwt = true
 
 [functions.notify-new-order]
 verify_jwt = true
+
+[functions.track-order]
+verify_jwt = false
