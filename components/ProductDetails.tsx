@@ -91,8 +91,8 @@ export function ProductDetails({ product, specificationRows = [], error }: { pro
           <p className="eyebrow">{product.category}</p>
           <h1>{product.name}</h1>
           <p className="product-price">{product.price}</p>
-          <CompareButton product={{ ...product, image_urls: product.image_urls ?? [] }} />
           <ProductPurchaseActions product={product} />
+          <CompareButton product={{ ...product, image_urls: product.image_urls ?? [] }} />
           <dl className="product-detail-meta"><div><dt>Brand</dt><dd>{product.brand || 'Not specified'}</dd></div><div><dt>Stock</dt><dd>{product.stock}</dd></div><div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div></dl>
           {product.short_description && <p className="product-short-description">{product.short_description}</p>}
           {descriptionParagraphs.length > 0 && <div className="product-description"><h2>Description</h2>{descriptionParagraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
