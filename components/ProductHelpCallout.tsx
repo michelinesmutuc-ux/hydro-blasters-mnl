@@ -32,7 +32,7 @@ export function ProductHelpCallout({ specifications }: { specifications: Specifi
     {variant.label && <p className="eyebrow">{variant.label}</p>}
     <h2>{variant.heading}</h2>
     <p>{variant.body}</p>
-    <Link className="secondary-button" href="/help/getting-started">{variant.action}</Link>
+    <Link className="secondary-button" href="/help/getting-started#toy-vs-hobby">{variant.action}</Link>
     <p className="product-help-tip"><strong>Hydro Tip</strong> The best gel blaster isn&apos;t the most expensive one—it&apos;s the one that matches your budget and how you plan to enjoy the hobby.</p>
   </aside>
 }
