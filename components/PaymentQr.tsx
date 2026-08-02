@@ -32,5 +32,35 @@ export function PaymentQr({ method, amount, bankOptionId, onBankOptionChange, on
 function PaymentDetails({ option, amount, imageStatus }: { option: ReturnType<typeof getPaymentOption> & {}; amount: number; imageStatus: 'loading' | 'ready' | 'error' }) {
   if (!option || imageStatus === 'error') return <div className="payment-qr-unavailable" role="alert">Payment QR is temporarily unavailable. Please contact Hydro Blasters MNL before sending payment.</div>
   if (imageStatus === 'loading') return <p>Loading payment QR…</p>
-  return <><strong>{option.name} Payment</strong><img src={option.qrPath} alt={`${option.name} payment QR code`} /><p className="payment-qr-amount">Amount to Pay Now: ₱{amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p><a className="payment-qr-download" href={option.qrPath} download={option.downloadName}>Download QR</a><p>Using the same phone? Download the QR and upload it to your GCash or banking app.</p><p>After completing your payment, upload a screenshot of the successful transaction below.</p></>
+  const downloadFile = (file?: File) => {
+    const link = document.createElement('a')
+    link.href = file ? URL.createObjectURL(file) : option.qrPath
+    link.download = file?.name ?? option.downloadName
+    link.click()
+    if (file) window.setTimeout(() => URL.revokeObjectURL(link.href), 0)
+  }
+  const downloadQr = async () => {
+    let file: File | undefined
+    try {
+      const response = await fetch(option.qrPath)
+      if (!response.ok) throw new Error('QR image could not be downloaded.')
+      const image = await response.blob()
+      if (!image.type.startsWith('image/')) throw new Error('QR image has an unsupported file type.')
+      file = new File([image], option.downloadName, { type: image.type })
+
+      const shareData = { files: [file] }
+      if (typeof navigator.share === 'function' && typeof navigator.canShare === 'function' && navigator.canShare(shareData)) {
+        try {
+          await navigator.share({ ...shareData, title: `${option.name} payment QR` })
+          return
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') return
+        }
+      }
+    } catch {
+      // Fall through to the browser's regular image download when the QR cannot be shared.
+    }
+    downloadFile(file)
+  }
+  return <><strong>{option.name} Payment</strong><img src={option.qrPath} alt={`${option.name} payment QR code`} /><p className="payment-qr-amount">Amount to Pay Now: ₱{amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p><button className="payment-qr-download" type="button" onClick={() => void downloadQr()}>Download QR</button><p className="payment-qr-share-help">On supported phones, Download QR opens your device&apos;s share menu. Choose Save Image, Photos, or your payment app.</p><p>Using the same phone? Download the QR and upload it to your GCash or banking app.</p><p>After completing your payment, upload a screenshot of the successful transaction below.</p></>
 }
