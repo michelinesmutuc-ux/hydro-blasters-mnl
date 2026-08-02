@@ -25,30 +25,61 @@ type Order = {
   order_notes: string | null
 }
 
+type ProofAvailability = 'checking' | 'available' | 'missing' | 'unknown'
+
+function getProofPathCandidates(storedPath: string) {
+  const normalizedPath = storedPath.trim()
+  if (!normalizedPath || /^https?:\/\//i.test(normalizedPath) || normalizedPath.startsWith('/')) return []
+  return [...new Set([normalizedPath, normalizedPath.replace(/^payment-proofs\//, '')])]
+}
+
 export function OrdersTable() {
   const [orders, setOrders] = useState<Order[]>([])
   const [error, setError] = useState<string | null>(null)
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null)
+  const [proofAvailability, setProofAvailability] = useState<Record<string, ProofAvailability>>({})
 
   async function load() {
     const { data, error: loadError } = await supabase
       .from('orders')
       .select('id,order_reference,customer_name,mobile_number,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,payment_status,order_status,payment_proof_path,telegram_notification_status,telegram_notification_attempted_at,created_at,order_notes')
       .order('created_at', { ascending: false })
-    if (loadError) setError(loadError.message)
-    else setOrders((data ?? []) as Order[])
+    if (loadError) {
+      setError(loadError.message)
+      return
+    }
+
+    const rows = (data ?? []) as Order[]
+    setOrders(rows)
+    setProofAvailability(Object.fromEntries(rows.map((order) => [order.id, order.payment_proof_path ? 'checking' : 'missing'])))
+
+    const availabilityEntries = await Promise.all(rows.map(async (order) => {
+      const candidatePaths = getProofPathCandidates(order.payment_proof_path ?? '')
+      if (!candidatePaths.length) return [order.id, 'missing'] as const
+
+      let hadUnexpectedError = false
+      for (const candidatePath of candidatePaths) {
+        const { data: signedProof, error: signedProofError } = await supabase.storage
+          .from('payment-proofs')
+          .createSignedUrl(candidatePath, 10)
+        if (!signedProofError && signedProof?.signedUrl) return [order.id, 'available'] as const
+        if (!/object not found/i.test(signedProofError?.message ?? '')) hadUnexpectedError = true
+      }
+      return [order.id, hadUnexpectedError ? 'unknown' : 'missing'] as const
+    }))
+    setProofAvailability(Object.fromEntries(availabilityEntries))
   }
 
   useEffect(() => { void load() }, [])
 
   async function proof(order: Order) {
     const storedPath = order.payment_proof_path?.trim() ?? ''
-    if (!storedPath || /^https?:\/\//i.test(storedPath) || storedPath.startsWith('/')) {
+    const candidatePaths = getProofPathCandidates(storedPath)
+    if (!candidatePaths.length) {
       setError('Stored payment-proof path is invalid.')
       return
     }
 
-    const candidatePaths = [...new Set([storedPath, storedPath.replace(/^payment-proofs\//, '')])]
     let lastError: { message: string } | null = null
     console.info('Payment proof link request.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', storedPath, candidatePaths })
 
@@ -65,6 +96,7 @@ export function OrdersTable() {
           if (repairError) console.warn('Payment proof path repair failed.', { orderId: order.id, message: repairError.message })
         }
         console.info('Payment proof signed link created.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', objectPath: candidatePath })
+        setProofAvailability((current) => ({ ...current, [order.id]: 'available' }))
         window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
         return
       }
@@ -73,6 +105,7 @@ export function OrdersTable() {
     }
 
     if (/object not found/i.test(lastError?.message ?? '')) {
+      setProofAvailability((current) => ({ ...current, [order.id]: 'missing' }))
       setError('Payment proof file is missing.')
       return
     }
@@ -146,6 +179,9 @@ export function OrdersTable() {
           order.telegram_notification_status === 'pending' &&
           (!order.telegram_notification_attempted_at || Date.now() - new Date(order.telegram_notification_attempted_at).getTime() > 30_000)
         )
+        const currentProofAvailability = proofAvailability[order.id] ?? 'checking'
+        const proofIsUnavailable = currentProofAvailability === 'missing'
+        const proofIsChecking = currentProofAvailability === 'checking'
 
         return <tr key={order.id}>
         <td>{order.order_reference}</td>
@@ -159,7 +195,7 @@ export function OrdersTable() {
           <span className={styles.status}>Telegram {order.telegram_notification_status}</span>
           {notificationMayBeRetried && <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" disabled={retryingOrderId === order.id} onClick={() => void retryTelegram(order)}>{retryingOrderId === order.id ? 'Retrying…' : 'Retry Telegram'}</button>}
         </td>
-        <td>{order.payment_proof_path ? <button className={styles.tableAction} type="button" onClick={() => void proof(order)}>View proof</button> : '—'}</td>
+        <td><button className={`${styles.tableAction} ${styles.proofAction}`} type="button" disabled={proofIsUnavailable || proofIsChecking} onClick={() => void proof(order)}>{proofIsChecking ? 'Checking proof…' : proofIsUnavailable ? 'Proof Missing' : 'View Payment Proof'}</button></td>
       </tr>
       })}</tbody>
     </table></div>

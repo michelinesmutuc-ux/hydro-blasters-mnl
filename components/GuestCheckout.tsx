@@ -17,6 +17,8 @@ const paymentMethods: { id: PaymentMethod; name: string; description: string }[]
   { id: 'cash_on_delivery', name: 'Cash on Delivery', description: 'Pay the merchandise amount upon delivery. Shipping and COD fees are due now.' },
   { id: 'pay_upon_pickup', name: 'Showroom Pickup', description: 'Reserve online and pay according to the selected pickup payment option.' },
 ]
+const supportedProofTypes = ['image/jpeg', 'image/png', 'image/webp']
+const maximumProofSize = 5 * 1024 * 1024
 
 async function fileToBase64(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -86,6 +88,30 @@ export function GuestCheckout() {
     setProof(null)
   }
 
+  const selectProof = (file: File | null) => {
+    if (!file) {
+      setProof(null)
+      return
+    }
+    if (!supportedProofTypes.includes(file.type)) {
+      setProof(null)
+      setError('Please upload a JPG, PNG, or WebP screenshot.')
+      return
+    }
+    if (file.size === 0) {
+      setProof(null)
+      setError('The payment screenshot file is empty. Please choose another file.')
+      return
+    }
+    if (file.size > maximumProofSize) {
+      setProof(null)
+      setError('The payment screenshot must be 5 MB or smaller.')
+      return
+    }
+    setError(null)
+    setProof(file)
+  }
+
   const getOrderAttemptKey = () => {
     if (orderAttemptKey.current) return orderAttemptKey.current
 
@@ -105,7 +131,9 @@ export function GuestCheckout() {
     if (proofNeeded && !proof) return setError('A payment screenshot is required.')
     if (pickup && !reservation) return setError('Confirm that this is only a reservation request.')
     if (payment === 'cash_on_delivery' && !codConfirm) return setError('Confirm the COD payment requirement.')
-    if (proof && (!['image/jpeg', 'image/png', 'image/webp'].includes(proof.type) || proof.size > 5 * 1024 * 1024)) return setError('Payment proof must be JPG, PNG, or WebP and 5 MB or smaller.')
+    if (proof && !supportedProofTypes.includes(proof.type)) return setError('Please upload a JPG, PNG, or WebP screenshot.')
+    if (proof && proof.size === 0) return setError('The payment screenshot file is empty. Please choose another file.')
+    if (proof && proof.size > maximumProofSize) return setError('The payment screenshot must be 5 MB or smaller.')
 
     setSaving(true)
     try {
@@ -159,7 +187,7 @@ export function GuestCheckout() {
           </div>
           {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><section><h3>Pay Now</h3><div><span>Nationwide Flat Rate Shipping</span><strong>{peso(shipping)}</strong></div><div><span>1% COD service fee</span><strong>{peso(codFee)}</strong></div><div className="cod-primary-amount"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div></section><section><h3>Pay Upon Delivery</h3><div><span>Merchandise subtotal</span><strong>{peso(subtotal)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div></section><section className="cod-order-value"><h3>Order Value</h3><div><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></section></div>}
           {payment && proofNeeded && <PaymentQr method={payment} amount={dueNow} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
-          {payment && proofNeeded && qrAvailable && <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input required type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proof && <img src={URL.createObjectURL(proof)} alt="Payment screenshot preview" />}</div>}
+          {payment && proofNeeded && qrAvailable && <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input required type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => selectProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proof && <img src={URL.createObjectURL(proof)} alt="Payment screenshot preview" />}</div>}
           {payment === 'pay_upon_pickup' && <label className="checkout-check"><input type="checkbox" checked={reservation} onChange={(event) => setReservation(event.target.checked)} /> I understand that this is only a reservation request and I must wait for Hydro Blasters MNL to confirm before visiting.</label>}
           {payment === 'cash_on_delivery' && <label className="checkout-check"><input type="checkbox" checked={codConfirm} onChange={(event) => setCodConfirm(event.target.checked)} /> I understand that the shipping fee and COD service fee are due now, while the merchandise amount will be paid to the courier upon delivery.</label>}
         </section>

@@ -35,18 +35,54 @@ Deno.serve(async (request) => {
     const proofBytes = proofRequired ? Uint8Array.from(atob(body.payment_proof.base64), c => c.charCodeAt(0)) : null
     if (proofBytes && proofBytes.byteLength > 5 * 1024 * 1024) return reply({ error: 'Payment proof must be 5 MB or smaller.' }, 400)
     if (body.payment_method === 'bank_transfer' && !String(body.payment_option_name ?? '').trim()) return reply({ error: 'Choose your bank before placing your order.' }, 400)
+    const extension = body.payment_proof?.contentType === 'image/png' ? 'png' : body.payment_proof?.contentType === 'image/webp' ? 'webp' : 'jpg'
+    const proofFileId = crypto.randomUUID()
+    const temporaryProofPath = proofRequired ? `pending/${body.idempotency_key}/${proofFileId}.${extension}` : null
+
+    if (proofRequired) {
+      const { data: uploadedProof, error: uploadError } = await admin.storage
+        .from('payment-proofs')
+        .upload(temporaryProofPath!, proofBytes!, { contentType: body.payment_proof.contentType, upsert: false })
+      if (uploadError || uploadedProof?.path !== temporaryProofPath) {
+        return reply({ error: 'Payment proof upload failed. Your order was not created.' }, 500)
+      }
+    }
+
     const { data, error } = await admin.rpc('create_guest_order', { payload: body })
-    if (error || !data?.[0]) return reply({ error: error?.message ?? 'Order could not be created.' }, 400)
+    if (error || !data?.[0]) {
+      if (temporaryProofPath) await admin.storage.from('payment-proofs').remove([temporaryProofPath])
+      return reply({ error: error?.message ?? 'Order could not be created.' }, 400)
+    }
+
     const order = data[0]
     const { data: savedOrder, error: savedOrderError } = await admin.from('orders').select('payment_proof_path').eq('id', order.order_id).single()
-    if (savedOrderError || !savedOrder) return reply({ error: 'Order could not be finalized. Please try again.' }, 500)
+    if (savedOrderError || !savedOrder) {
+      if (temporaryProofPath) await admin.storage.from('payment-proofs').remove([temporaryProofPath])
+      return reply({ error: 'Order could not be finalized. Please try again.' }, 500)
+    }
+
     if (proofRequired && !savedOrder.payment_proof_path) {
-      const extension = body.payment_proof.contentType === 'image/png' ? 'png' : body.payment_proof.contentType === 'image/webp' ? 'webp' : 'jpg'
-      const path = `orders/${order.order_reference}/${crypto.randomUUID()}.${extension}`
-      const { error: uploadError } = await admin.storage.from('payment-proofs').upload(path, proofBytes!, { contentType: body.payment_proof.contentType, upsert: false })
-      if (uploadError) { await admin.from('orders').delete().eq('id', order.order_id); return reply({ error: 'Payment proof upload failed. Your order was not created.' }, 500) }
-      const { error: proofError } = await admin.from('orders').update({ payment_proof_path: path }).eq('id', order.order_id)
-      if (proofError) { await admin.storage.from('payment-proofs').remove([path]); await admin.from('orders').delete().eq('id', order.order_id); return reply({ error: 'Order could not be finalized. Please try again.' }, 500) }
+      const finalProofPath = `orders/${order.order_reference}/${proofFileId}.${extension}`
+      const { error: moveError } = await admin.storage.from('payment-proofs').move(temporaryProofPath!, finalProofPath)
+      if (moveError) {
+        await admin.storage.from('payment-proofs').remove([temporaryProofPath!])
+        await admin.from('orders').delete().eq('id', order.order_id)
+        return reply({ error: 'Payment proof upload failed. Your order was not created.' }, 500)
+      }
+
+      const { data: finalizedOrder, error: proofError } = await admin
+        .from('orders')
+        .update({ payment_proof_path: finalProofPath })
+        .eq('id', order.order_id)
+        .select('payment_proof_path')
+        .single()
+      if (proofError || finalizedOrder?.payment_proof_path !== finalProofPath) {
+        await admin.storage.from('payment-proofs').remove([finalProofPath])
+        await admin.from('orders').delete().eq('id', order.order_id)
+        return reply({ error: 'Order could not be finalized. Please try again.' }, 500)
+      }
+    } else if (temporaryProofPath) {
+      await admin.storage.from('payment-proofs').remove([temporaryProofPath])
     }
 
     EdgeRuntime.waitUntil(triggerOrderNotification(admin, url, serviceKey, order))
