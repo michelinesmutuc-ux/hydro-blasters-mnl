@@ -34,6 +34,9 @@ type ProofDiagnostic = {
   matchingObjects: string[]
   objectExists: boolean
   signedUrl: string | null
+  storageError: string | null
+  authenticatedUserId: string | null
+  appMetadataRole: string | null
   message: string
 }
 
@@ -44,7 +47,7 @@ function isValidStoredProofPath(storedPath: string) {
 
 async function findMatchingProofObjects(order: Order, storedPath: string) {
   const fileName = storedPath.split('/').pop()
-  if (!fileName) return []
+  if (!fileName) return { paths: [] as string[], errors: [] as string[] }
 
   const storedFolder = storedPath.split('/').slice(0, -1).join('/')
   const folders = [...new Set([
@@ -55,13 +58,19 @@ async function findMatchingProofObjects(order: Order, storedPath: string) {
   ].filter(Boolean))]
 
   const listings = await Promise.all(folders.map(async (folder) => {
-    const { data } = await supabase.storage.from('payment-proofs').list(folder, { limit: 100 })
-    return (data ?? [])
-      .filter((object) => object.name === fileName)
-      .map((object) => `${folder}/${object.name}`)
+    const { data, error } = await supabase.storage.from('payment-proofs').list(folder, { limit: 100 })
+    return {
+      paths: (data ?? [])
+        .filter((object) => object.name === fileName)
+        .map((object) => `${folder}/${object.name}`),
+      error: error?.message ?? null,
+    }
   }))
 
-  return [...new Set(listings.flat())]
+  return {
+    paths: [...new Set(listings.flatMap((listing) => listing.paths))],
+    errors: [...new Set(listings.map((listing) => listing.error).filter((error): error is string => Boolean(error)))],
+  }
 }
 
 export function OrdersTable() {
@@ -88,6 +97,31 @@ export function OrdersTable() {
 
   async function proof(order: Order) {
     const storedPath = order.payment_proof_path?.trim() ?? ''
+    let session
+    try {
+      session = await requireAdminSession()
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'No authenticated administrator session was found.'
+      setProofDiagnostics((current) => ({ ...current, [order.id]: {
+        orderId: order.id,
+        orderReference: order.order_reference,
+        storedPath,
+        bucket: 'payment-proofs',
+        lookupPaths: [storedPath || 'None'],
+        matchingObjects: [],
+        objectExists: false,
+        signedUrl: null,
+        storageError: message,
+        authenticatedUserId: null,
+        appMetadataRole: null,
+        message: 'Storage access was not attempted because the admin session is unavailable.',
+      } }))
+      setError(message)
+      return
+    }
+
+    const authenticatedUserId = session.user.id
+    const appMetadataRole = typeof session.user.app_metadata?.role === 'string' ? session.user.app_metadata.role : null
     if (!isValidStoredProofPath(storedPath)) {
       setProofDiagnostics((current) => ({ ...current, [order.id]: {
         orderId: order.id,
@@ -98,13 +132,16 @@ export function OrdersTable() {
         matchingObjects: [],
         objectExists: false,
         signedUrl: null,
+        storageError: null,
+        authenticatedUserId,
+        appMetadataRole,
         message: 'Stored payment-proof path is invalid.',
       } }))
       setError('Stored payment-proof path is invalid.')
       return
     }
 
-    console.info('Payment proof link request.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', storedPath, lookupPath: storedPath })
+    console.info('Payment proof link request.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', storedPath, lookupPath: storedPath, authenticatedUserId, appMetadataRole })
     const { data: exactSignedProof, error: exactProofError } = await supabase.storage
       .from('payment-proofs')
       .createSignedUrl(storedPath, 60)
@@ -119,13 +156,18 @@ export function OrdersTable() {
         matchingObjects: [storedPath],
         objectExists: true,
         signedUrl: exactSignedProof.signedUrl,
+        storageError: null,
+        authenticatedUserId,
+        appMetadataRole,
         message: 'Proof object found at the stored path.',
       } }))
       window.open(exactSignedProof.signedUrl, '_blank', 'noopener,noreferrer')
       return
     }
 
-    const matchingObjects = await findMatchingProofObjects(order, storedPath)
+    const matchingLookup = await findMatchingProofObjects(order, storedPath)
+    const matchingObjects = matchingLookup.paths
+    const storageError = [exactProofError?.message, ...matchingLookup.errors].filter(Boolean).join(' | ') || null
     if (matchingObjects.length === 1) {
       const repairedPath = matchingObjects[0]
       const { error: repairError } = await supabase
@@ -146,6 +188,9 @@ export function OrdersTable() {
             matchingObjects,
             objectExists: true,
             signedUrl: repairedSignedProof.signedUrl,
+            storageError: null,
+            authenticatedUserId,
+            appMetadataRole,
             message: 'Proof object found under a legacy path. The saved database path was repaired.',
           } }))
           await load()
@@ -164,10 +209,13 @@ export function OrdersTable() {
       matchingObjects,
       objectExists: false,
       signedUrl: null,
-      message: matchingObjects.length > 1 ? 'More than one matching proof file was found. The saved path was not changed.' : 'Payment proof was not uploaded successfully for this order.',
+      storageError,
+      authenticatedUserId,
+      appMetadataRole,
+      message: storageError ? 'Storage access failed. See the exact error below.' : matchingObjects.length > 1 ? 'More than one matching proof file was found. The saved path was not changed.' : 'No matching proof object was found.',
     } }))
-    console.warn('Payment proof link failed.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', objectPath: storedPath, message: exactProofError?.message ?? 'No signed URL returned.', matchingObjects })
-    setError(matchingObjects.length > 1 ? 'More than one matching proof file was found. See admin diagnostics.' : 'Payment proof was not uploaded successfully for this order.')
+    console.warn('Payment proof link failed.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', objectPath: storedPath, message: storageError ?? 'No signed URL returned.', matchingObjects, authenticatedUserId, appMetadataRole })
+    setError(storageError ? `Storage error: ${storageError}` : matchingObjects.length > 1 ? 'More than one matching proof file was found. See admin diagnostics.' : 'No matching proof object was found.')
   }
 
   async function update(order: Order, field: 'payment_status' | 'order_status', value: string) {
@@ -251,7 +299,7 @@ export function OrdersTable() {
           <span className={styles.status}>Telegram {order.telegram_notification_status}</span>
           {notificationMayBeRetried && <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" disabled={retryingOrderId === order.id} onClick={() => void retryTelegram(order)}>{retryingOrderId === order.id ? 'Retrying…' : 'Retry Telegram'}</button>}
         </td>
-        <td><button className={`${styles.tableAction} ${styles.proofAction}`} type="button" onClick={() => void proof(order)}>View Payment Proof</button>{proofDiagnostic && <details className={styles.proofDiagnostic}><summary>Proof diagnostics</summary><dl><div><dt>Stored path</dt><dd>{proofDiagnostic.storedPath || 'None'}</dd></div><div><dt>Bucket</dt><dd>{proofDiagnostic.bucket}</dd></div><div><dt>Lookup paths</dt><dd>{proofDiagnostic.lookupPaths.join(' · ') || 'None'}</dd></div><div><dt>Object exists</dt><dd>{proofDiagnostic.objectExists ? 'Yes' : 'No'}</dd></div><div><dt>Matching objects</dt><dd>{proofDiagnostic.matchingObjects.join(' · ') || 'None found'}</dd></div><div><dt>Signed URL</dt><dd>{proofDiagnostic.signedUrl ? <a href={proofDiagnostic.signedUrl} target="_blank" rel="noreferrer">Open secure proof link</a> : 'Not generated'}</dd></div><div><dt>Result</dt><dd>{proofDiagnostic.message}</dd></div></dl></details>}</td>
+        <td><button className={`${styles.tableAction} ${styles.proofAction}`} type="button" onClick={() => void proof(order)}>View Payment Proof</button>{proofDiagnostic && <details className={styles.proofDiagnostic}><summary>Proof diagnostics</summary><dl><div><dt>Stored path</dt><dd>{proofDiagnostic.storedPath || 'None'}</dd></div><div><dt>Bucket</dt><dd>{proofDiagnostic.bucket}</dd></div><div><dt>Lookup paths</dt><dd>{proofDiagnostic.lookupPaths.join(' · ') || 'None'}</dd></div><div><dt>Object exists</dt><dd>{proofDiagnostic.objectExists ? 'Yes' : 'No'}</dd></div><div><dt>Matching objects</dt><dd>{proofDiagnostic.matchingObjects.join(' · ') || 'None found'}</dd></div><div><dt>Storage error</dt><dd>{proofDiagnostic.storageError || 'None'}</dd></div><div><dt>Authenticated user</dt><dd>{proofDiagnostic.authenticatedUserId || 'No session'}</dd></div><div><dt>Admin role</dt><dd>{proofDiagnostic.appMetadataRole || 'Missing'}</dd></div><div><dt>Signed URL</dt><dd>{proofDiagnostic.signedUrl ? <a href={proofDiagnostic.signedUrl} target="_blank" rel="noreferrer">Open secure proof link</a> : 'Not generated'}</dd></div><div><dt>Result</dt><dd>{proofDiagnostic.message}</dd></div></dl></details>}</td>
       </tr>
       })}</tbody>
     </table></div>
