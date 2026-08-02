@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase/client'
 import { fetchActiveProductBySlug } from '../../../lib/supabase/products'
 import { fetchProductSpecifications } from '../../../lib/supabase/product-specifications'
 import { CartLink } from '../../../components/CartLink'
+import { SiteFooter } from '../../../components/SiteFooter'
 
 export const dynamicParams = false
 
@@ -41,7 +42,7 @@ export default async function ProductPage({ params: paramsPromise }: { params: P
         <div className="header-actions"><a className="mobile-shop-link" href="/shop">Shop</a><button className="icon-button" type="button" aria-label="Search">⌕</button><CartLink /></div>
       </header>
       <main><ProductDetails product={data as Product | null} specificationRows={specificationRows ?? []} error={error?.message} /></main>
-      <footer><div className="footer-brand"><img src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span>Hydro Blasters MNL</span></div><div className="footer-links"><div><h3>Contact</h3><p>Information not yet provided</p></div><div><h3>Social links</h3><p>Information not yet provided</p></div><div><h3>Store policies</h3><p>Information not yet provided</p></div><div><h3>Showroom</h3><p>Information not yet provided</p></div></div></footer>
+      <SiteFooter />
     </div>
   )
 }

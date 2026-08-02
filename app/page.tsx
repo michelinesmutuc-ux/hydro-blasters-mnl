@@ -1,6 +1,7 @@
 import { FeaturedCategories } from '../components/FeaturedCategories'
 import { PublicProducts } from '../components/PublicProducts'
 import { CartLink } from '../components/CartLink'
+import { SiteFooter } from '../components/SiteFooter'
 
 export default function Home() {
   return (
@@ -69,15 +70,7 @@ export default function Home() {
         </section>
       </main>
 
-      <footer>
-        <div className="footer-brand"><img src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span>Hydro Blasters MNL</span></div>
-        <div className="footer-links">
-          <div><h3>Contact</h3><p>Information not yet provided</p></div>
-          <div><h3>Social links</h3><p>Information not yet provided</p></div>
-          <div><h3>Store policies</h3><p>Information not yet provided</p></div>
-          <div><h3>Showroom</h3><p>Information not yet provided</p></div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   )
 }
