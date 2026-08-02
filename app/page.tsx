@@ -45,14 +45,9 @@ export default function Home() {
           <FeaturedCategories />
         </section>
 
-        <section className="section section-arrivals">
-          <div className="section-heading"><p className="eyebrow">Selected products</p><h2>Featured products</h2></div>
-          <PublicProducts featuredOnly />
-        </section>
-
         <section className="section section-arrivals" id="shop">
-          <div className="section-heading"><p className="eyebrow">Product catalogue</p><h2>New arrivals</h2></div>
-          <PublicProducts />
+          <div className="section-heading"><p className="eyebrow">Selected products</p><h2>Featured products</h2></div>
+          <PublicProducts homepageHighlights />
         </section>
 
         <section className="section about-section" id="about">

@@ -15,6 +15,7 @@ type ProductFormProps = { mode: 'add' | 'edit' }
 type SpecificationRow = { id: string; label: string; value: string }
 type SupabaseError = { message?: string; code?: string; details?: string | null; hint?: string | null }
 type ProductDraft = ReturnType<typeof initialValues>
+type HighlightType = 'none' | 'new_arrival' | 'featured' | 'best_seller' | 'clearance_sale' | 'limited_stock'
 
 const statusOptions = [
   { value: 'draft', label: 'Draft' },
@@ -24,13 +25,21 @@ const statusOptions = [
 ]
 
 const categoryOptions = ['Gel Blaster', 'Pistol', 'Parts', 'Accessories', 'Batteries and Chargers', 'Tactical Gear', 'Other']
+const highlightOptions: { value: HighlightType; label: string }[] = [
+  { value: 'none', label: 'None — no badge' },
+  { value: 'new_arrival', label: 'New Arrival' },
+  { value: 'featured', label: 'Featured' },
+  { value: 'best_seller', label: 'Best Seller' },
+  { value: 'clearance_sale', label: 'Clearance Sale' },
+  { value: 'limited_stock', label: 'Limited Stock' },
+]
 
 function slugify(value: string) {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 }
 
 function initialValues() {
-  return { name: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shippingClassification: 'standard', shortDescription: '', description: '', featured: false, isActive: false }
+  return { name: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shippingClassification: 'standard', shortDescription: '', description: '', featured: false, isActive: false, showOnHomepage: false, highlightType: 'none' as HighlightType, homepageSortOrder: '' }
 }
 
 function newSpecificationRow(): SpecificationRow {
@@ -88,6 +97,9 @@ export function ProductForm({ mode }: ProductFormProps) {
         description: data.description ?? '',
         featured: data.featured,
         isActive: mode === 'add' ? false : data.is_active,
+        showOnHomepage: mode === 'add' ? false : data.show_on_homepage ?? false,
+        highlightType: (data.highlight_type ?? 'none') as HighlightType,
+        homepageSortOrder: data.homepage_sort_order === null || data.homepage_sort_order === undefined ? '' : String(data.homepage_sort_order),
       }
       if (mode === 'edit') {
         setProductId(data.id)
@@ -213,7 +225,8 @@ export function ProductForm({ mode }: ProductFormProps) {
       .replace(/^-+|-+$/g, '')
     const price = Number(draft.price)
     const stock = Number(draft.stock)
-    if (!draft.name.trim() || (mode === 'add' && !normalizedSlug) || !draft.category || !Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0) {
+    const homepageSortOrder = draft.homepageSortOrder.trim() === '' ? null : Number(draft.homepageSortOrder)
+    if (!draft.name.trim() || (mode === 'add' && !normalizedSlug) || !draft.category || !Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0 || (homepageSortOrder !== null && !Number.isInteger(homepageSortOrder))) {
       setError('Please complete the required fields with a valid non-negative price and whole-number stock value.')
       return
     }
@@ -252,6 +265,9 @@ export function ProductForm({ mode }: ProductFormProps) {
         image_urls: [],
         featured: draft.featured,
         is_active: draft.isActive,
+        show_on_homepage: draft.showOnHomepage,
+        highlight_type: draft.showOnHomepage && draft.highlightType !== 'none' ? draft.highlightType : null,
+        homepage_sort_order: draft.showOnHomepage ? homepageSortOrder : null,
       }
 
       if (!isExistingProduct) {
@@ -259,7 +275,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         const { data, error: insertError } = await supabase
           .from('products')
           .insert({ ...productPayload, slug: createdSlug })
-          .select('id,name,slug,brand,category,price,stock,status,featured,is_active,image_urls')
+          .select('id,name,slug,brand,category,price,stock,status,featured,is_active,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
           .single()
         if (insertError || !data) {
           console.error('[Hydro Blasters MNL] products insert failed:', insertError)
@@ -281,7 +297,7 @@ export function ProductForm({ mode }: ProductFormProps) {
             .from('products')
             .update({ image_urls: uploadedImageUrls, updated_at: new Date().toISOString() })
             .eq('id', data.id)
-            .select('id,name,slug,brand,category,price,stock,status,featured,is_active,image_urls')
+            .select('id,name,slug,brand,category,price,stock,status,featured,is_active,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
             .single()
           if (imageUpdateError || !imageUpdatedProduct) throw imageUpdateError ?? new Error('Product saved, but its image URLs could not be saved.')
           savedProduct = imageUpdatedProduct
@@ -328,6 +344,9 @@ export function ProductForm({ mode }: ProductFormProps) {
         image_urls: finalImageUrls,
         featured: draft.featured,
         is_active: draft.isActive,
+        show_on_homepage: draft.showOnHomepage,
+        highlight_type: draft.showOnHomepage && draft.highlightType !== 'none' ? draft.highlightType : null,
+        homepage_sort_order: draft.showOnHomepage ? homepageSortOrder : null,
         updated_at: new Date().toISOString(),
       }
       console.log('Update payload:', updatePayload)
@@ -336,7 +355,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         .from('products')
         .update(updatePayload)
         .eq('id', productId as string)
-        .select('id,name,slug,brand,category,price,stock,status,featured,is_active,image_urls')
+        .select('id,name,slug,brand,category,price,stock,status,featured,is_active,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
         .single()
       if (updateError) throw updateError
       console.log('Returned Supabase row:', data)
@@ -388,6 +407,13 @@ export function ProductForm({ mode }: ProductFormProps) {
             <label className={styles.toggle}><span><strong>Featured</strong><span>Set featured status</span></span><input className={styles.switch} type="checkbox" checked={draft.featured} onChange={(event) => update('featured', event.target.checked)} /></label>
             <label className={styles.toggle}><span><strong>Active</strong><span>Set active status</span></span><input className={styles.switch} type="checkbox" checked={draft.isActive} onChange={(event) => update('isActive', event.target.checked)} /></label>
           </div>
+          <div className={`${styles.toggleRow} ${styles.fieldFull}`}>
+            <label className={styles.toggle}><span><strong>Show in Homepage Highlights</strong><span>Manually place this product in the homepage Featured Products section</span></span><input className={styles.switch} type="checkbox" checked={draft.showOnHomepage} onChange={(event) => update('showOnHomepage', event.target.checked)} /></label>
+          </div>
+          {draft.showOnHomepage && <div className={`${styles.highlightControls} ${styles.fieldFull}`}>
+            <div className={styles.field}><label htmlFor="highlight-type">Highlight Type</label><select id="highlight-type" required value={draft.highlightType} onChange={(event) => update('highlightType', event.target.value as HighlightType)}>{highlightOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><span className={styles.slugHint}>Choose None to include the product without a homepage badge.</span></div>
+            <div className={styles.field}><label htmlFor="homepage-sort-order">Homepage Display Order</label><input id="homepage-sort-order" type="number" step="1" value={draft.homepageSortOrder} onChange={(event) => update('homepageSortOrder', event.target.value)} placeholder="Optional — lower numbers appear first" /><span className={styles.slugHint}>If left blank, products are ordered by name.</span></div>
+          </div>}
           <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="short-description">Short Description</label><textarea id="short-description" value={draft.shortDescription} onChange={(event) => update('shortDescription', event.target.value)} placeholder="Short product description" /></div>
           <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="description">Full Description</label><textarea id="description" value={draft.description} onChange={(event) => update('description', event.target.value)} placeholder="Full product description" /></div>
         </div>

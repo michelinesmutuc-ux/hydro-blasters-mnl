@@ -7,6 +7,8 @@ import { getProductUrl } from '../lib/products/get-product-url'
 import { AddToCartButton } from './AddToCartButton'
 import { CompareButton } from './CompareButton'
 
+export type HomepageHighlightType = 'new_arrival' | 'featured' | 'best_seller' | 'clearance_sale' | 'limited_stock'
+
 export type PublicProduct = {
   id: string
   name: string
@@ -17,6 +19,9 @@ export type PublicProduct = {
   stock: number
   status: 'draft' | 'in_stock' | 'out_of_stock' | 'preorder'
   image_urls: string[]
+  show_on_homepage?: boolean
+  highlight_type?: HomepageHighlightType | null
+  homepage_sort_order?: number | null
 }
 
 type ProductCardProps = {
@@ -28,6 +33,14 @@ function statusLabel(status: PublicProduct['status']) {
   return status.replaceAll('_', ' ')
 }
 
+const highlightLabels: Record<HomepageHighlightType, string> = {
+  new_arrival: 'New Arrival',
+  featured: 'Featured',
+  best_seller: 'Best Seller',
+  clearance_sale: 'Clearance Sale',
+  limited_stock: 'Limited Stock',
+}
+
 export function ProductCard({ product, actions }: ProductCardProps) {
   const imageUrl = product.image_urls[0]
   const productHref = getProductUrl(product)
@@ -37,6 +50,7 @@ export function ProductCard({ product, actions }: ProductCardProps) {
         <ProductImageFrame src={imageUrl} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="card" />
       </Link>
       <div className="product-card-body">
+        {product.highlight_type && <span className={`product-highlight-badge product-highlight-${product.highlight_type}`}>{highlightLabels[product.highlight_type]}</span>}
         <p className="placeholder-label">{product.category}</p>
         <h2><Link className="product-card-title-link" href={productHref}>{product.name}</Link></h2>
           <dl className="product-meta">

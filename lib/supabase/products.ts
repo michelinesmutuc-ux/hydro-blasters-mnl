@@ -1,10 +1,11 @@
 import { supabase } from './client'
 
-export const publicProductColumns = 'id,name,slug,brand,category,price,stock,status,image_urls,shipping_classification,featured,created_at,short_description'
-export const adminProductColumns = 'id,name,slug,brand,category,price,stock,status,shipping_classification,short_description,description,specifications,image_urls,featured,is_active,created_at'
+export const publicProductColumns = 'id,name,slug,brand,category,price,stock,status,image_urls,shipping_classification,featured,show_on_homepage,highlight_type,homepage_sort_order,created_at,short_description'
+export const adminProductColumns = 'id,name,slug,brand,category,price,stock,status,shipping_classification,short_description,description,specifications,image_urls,featured,is_active,show_on_homepage,highlight_type,homepage_sort_order,created_at'
 
-export async function fetchActiveProducts(options: { featuredOnly?: boolean } = {}) {
+export async function fetchActiveProducts(options: { featuredOnly?: boolean; homepageOnly?: boolean } = {}) {
   let query = supabase.from('products').select(publicProductColumns).eq('is_active', true)
+  if (options.homepageOnly) return query.eq('show_on_homepage', true).order('homepage_sort_order', { ascending: true, nullsFirst: false }).order('name', { ascending: true })
   if (options.featuredOnly) query = query.eq('featured', true)
   return query.order('created_at', { ascending: false })
 }
@@ -30,7 +31,7 @@ export async function fetchAdminProducts() {
 export async function fetchAdminProduct(productId: string) {
   return supabase
     .from('products')
-    .select('id,name,slug,brand,category,price,stock,status,shipping_classification,short_description,description,featured,is_active,image_urls')
+    .select('id,name,slug,brand,category,price,stock,status,shipping_classification,short_description,description,featured,is_active,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
     .eq('id', productId)
     .single()
 }
