@@ -49,15 +49,6 @@ export default function Home() {
           <PublicProducts homepageHighlights />
         </section>
 
-        <section className="section about-section" id="about">
-          <div className="section-heading"><p className="eyebrow">About the store</p><h2>Why Hydro Blasters MNL</h2></div>
-          <div className="fact-grid">
-            <article><span>01</span><h3>Established in 2021</h3></article>
-            <article><span>02</span><h3>Specialized toy gel blaster store</h3></article>
-            <article><span>03</span><h3>Showroom visits by appointment</h3></article>
-          </div>
-        </section>
-
         <section className="visit-section" id="visit">
           <div><p className="eyebrow">Showroom appointment</p><h2>Planning to visit?</h2><p>Showroom visits are arranged in advance.</p></div>
           <a className="primary-button" href="/appointments">Book a visit <span>→</span></a>
