@@ -22,6 +22,7 @@ type Order = {
   payment_status: string
   order_status: string
   telegram_notification_status: 'pending' | 'sent' | 'failed'
+  telegram_notification_type: 'photo' | 'text-fallback' | 'text' | 'failed' | null
   telegram_notification_sent_at: string | null
   telegram_notification_attempted_at: string | null
 }
@@ -111,28 +112,30 @@ Deno.serve(async (request) => {
   let claimedOrderId: string | null = null
 
   try {
-    const { orderId } = await request.json()
+    const { orderId, resend = false } = await request.json()
     if (!String(orderId ?? '').trim()) return json({ error: 'Order ID is required.' }, 400)
+    if (typeof resend !== 'boolean') return json({ error: 'Resend setting is invalid.' }, 400)
 
     const { data: order, error: orderError } = await admin
       .from('orders')
-      .select('id,order_reference,customer_name,mobile_number,city_municipality,region,order_notes,delivery_method,payment_method,selected_payment_option_name,merchandise_subtotal,shipping_fee,cod_service_fee,upfront_amount,rider_collectible_amount,showroom_payable_amount,overall_total,payment_proof_path,payment_status,order_status,telegram_notification_status,telegram_notification_sent_at,telegram_notification_attempted_at')
+      .select('id,order_reference,customer_name,mobile_number,city_municipality,region,order_notes,delivery_method,payment_method,selected_payment_option_name,merchandise_subtotal,shipping_fee,cod_service_fee,upfront_amount,rider_collectible_amount,showroom_payable_amount,overall_total,payment_proof_path,payment_status,order_status,telegram_notification_status,telegram_notification_type,telegram_notification_sent_at,telegram_notification_attempted_at')
       .eq('id', orderId)
       .single<Order>()
     if (orderError || !order) return json({ error: 'Order not found.' }, 404)
 
     const proofRequired = !(order.delivery_method === 'showroom_pickup' && order.payment_method === 'pay_upon_pickup')
     if (proofRequired && !order.payment_proof_path) return json({ error: 'Order payment proof is not attached.' }, 409)
-    if (order.telegram_notification_sent_at || order.telegram_notification_attempted_at || order.telegram_notification_status !== 'pending') return json({ message: 'Notification already handled.' })
+    if (!resend && (order.telegram_notification_sent_at || order.telegram_notification_attempted_at || order.telegram_notification_status !== 'pending')) return json({ message: 'Notification already handled.' })
 
-    const { data: claimed, error: claimError } = await admin
+    let claimQuery = admin
       .from('orders')
-      .update({ telegram_notification_attempted_at: new Date().toISOString(), telegram_notification_error: null })
+      .update({ telegram_notification_status: 'pending', telegram_notification_attempted_at: new Date().toISOString(), telegram_notification_error: null, telegram_notification_type: null })
       .eq('id', order.id)
-      .eq('telegram_notification_status', 'pending')
-      .is('telegram_notification_attempted_at', null)
-      .select('id')
-      .maybeSingle()
+      .eq('telegram_notification_status', resend ? order.telegram_notification_status : 'pending')
+    claimQuery = order.telegram_notification_attempted_at
+      ? claimQuery.eq('telegram_notification_attempted_at', order.telegram_notification_attempted_at)
+      : claimQuery.is('telegram_notification_attempted_at', null)
+    const { data: claimed, error: claimError } = await claimQuery.select('id').maybeSingle()
     if (claimError) throw claimError
     if (!claimed) return json({ message: 'Notification already handled.' })
     claimedOrderId = order.id
@@ -176,6 +179,7 @@ Deno.serve(async (request) => {
     const message = `${notificationHeading}\n\n<b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n<b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n<b>Items</b>\n${itemLines}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\nReview this order in Admin Orders.`
 
     let telegram
+    let notificationType: 'photo' | 'text-fallback' | 'text' = 'text'
     if (order.payment_proof_path) {
       const { data: signedProof, error: signedProofError } = await admin.storage
         .from('payment-proofs')
@@ -185,10 +189,12 @@ Deno.serve(async (request) => {
         const photoResult = await sendTelegramPhoto(signedProof.signedUrl, caption)
         console.info('Order Telegram photo response.', { orderId: order.id, orderReference: order.order_reference, endpoint: 'sendPhoto', httpStatus: photoResult.status, result: photoResult.code, safeResponse: photoResult.safeResponse })
         telegram = photoResult.ok ? photoResult : await sendTelegramMessage(message)
+        notificationType = photoResult.ok ? 'photo' : 'text-fallback'
         if (!photoResult.ok) console.info('Order Telegram photo fallback response.', { orderId: order.id, orderReference: order.order_reference, endpoint: 'sendMessage', httpStatus: telegram.status, result: telegram.code, safeResponse: telegram.safeResponse })
       } else {
         console.error('Order payment proof signed URL could not be created.', { orderId: order.id, orderReference: order.order_reference, message: signedProofError?.message ?? 'No signed URL returned.' })
         telegram = await sendTelegramMessage(message)
+        notificationType = 'text-fallback'
       }
     } else {
       telegram = await sendTelegramMessage(message)
@@ -197,16 +203,16 @@ Deno.serve(async (request) => {
     console.info('Order Telegram final API response.', { orderId: order.id, orderReference: order.order_reference, httpStatus: telegram.status, result: telegram.code, safeResponse: telegram.safeResponse })
     if (!telegram.ok) {
       const safeError = telegram.code === 'not_configured' ? 'Telegram notification is not configured.' : telegram.code === 'unreachable' ? 'Telegram could not be reached.' : 'Telegram rejected the notification.'
-      const { error: failedStatusError } = await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_error: safeError }).eq('id', order.id)
+      const { error: failedStatusError } = await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_type: 'failed', telegram_notification_error: safeError }).eq('id', order.id)
       console.info('Order Telegram failure status update.', { orderId: order.id, orderReference: order.order_reference, updated: !failedStatusError })
       console.error('Order Telegram notification failed.', { orderId: order.id, orderReference: order.order_reference, stage: 'send', telegramStatus: telegram.status, code: telegram.code })
       return json({ error: 'Telegram notification was not sent.' }, 502)
     }
 
-    const { error: sentError } = await admin.from('orders').update({ telegram_notification_status: 'sent', telegram_notification_sent_at: new Date().toISOString(), telegram_notification_error: null }).eq('id', order.id)
+    const { error: sentError } = await admin.from('orders').update({ telegram_notification_status: 'sent', telegram_notification_type: notificationType, telegram_notification_sent_at: new Date().toISOString(), telegram_notification_error: null }).eq('id', order.id)
     if (sentError) throw sentError
     console.info('Order Telegram sent status update.', { orderId: order.id, orderReference: order.order_reference, updated: true })
-    return json({ message: 'Telegram notification sent.' }, 201)
+    return json({ message: notificationType === 'photo' ? 'Telegram photo notification sent.' : notificationType === 'text-fallback' ? 'Photo could not be sent. Text notification sent instead.' : 'Telegram text notification sent.', notificationType }, 201)
   } catch (error) {
     console.error('Order notification failed.', error)
     if (claimedOrderId) {
@@ -214,6 +220,7 @@ Deno.serve(async (request) => {
         .from('orders')
         .update({
           telegram_notification_status: 'failed',
+          telegram_notification_type: 'failed',
           telegram_notification_error: 'Order notification could not be completed.',
         })
         .eq('id', claimedOrderId)

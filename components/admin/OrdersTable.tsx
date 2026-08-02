@@ -20,7 +20,10 @@ type Order = {
   order_status: string
   payment_proof_path: string | null
   telegram_notification_status: 'pending' | 'sent' | 'failed'
+  telegram_notification_type: 'photo' | 'text-fallback' | 'text' | 'failed' | null
   telegram_notification_attempted_at: string | null
+  telegram_notification_sent_at: string | null
+  telegram_notification_error: string | null
   created_at: string
   order_notes: string | null
 }
@@ -77,12 +80,13 @@ export function OrdersTable() {
   const [orders, setOrders] = useState<Order[]>([])
   const [error, setError] = useState<string | null>(null)
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null)
+  const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null)
   const [proofDiagnostics, setProofDiagnostics] = useState<Record<string, ProofDiagnostic>>({})
 
   async function load() {
     const { data, error: loadError } = await supabase
       .from('orders')
-      .select('id,order_reference,customer_name,mobile_number,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,payment_status,order_status,payment_proof_path,telegram_notification_status,telegram_notification_attempted_at,created_at,order_notes')
+      .select('id,order_reference,customer_name,mobile_number,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,payment_status,order_status,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,created_at,order_notes')
       .order('created_at', { ascending: false })
     if (loadError) {
       setError(loadError.message)
@@ -232,28 +236,15 @@ export function OrdersTable() {
     }
   }
 
-  async function retryTelegram(order: Order) {
+  async function resendTelegram(order: Order) {
     setError(null)
+    setTelegramFeedback(null)
     setRetryingOrderId(order.id)
     try {
       await requireAdminSession()
-      console.info('Retry Telegram requested.', { orderId: order.id, orderReference: order.order_reference, functionName: 'notify-new-order' })
-      const { data: requeuedOrder, error: resetError } = await supabase
-        .from('orders')
-        .update({
-          telegram_notification_status: 'pending',
-          telegram_notification_attempted_at: null,
-          telegram_notification_error: null,
-        })
-        .eq('id', order.id)
-        .in('telegram_notification_status', ['failed', 'pending'])
-        .select('id')
-        .maybeSingle()
-      if (resetError) throw resetError
-      if (!requeuedOrder) throw new Error('Telegram notification could not be queued for retry.')
-
+      console.info('Resend Telegram requested.', { orderId: order.id, orderReference: order.order_reference, hasProofPath: Boolean(order.payment_proof_path), functionName: 'notify-new-order' })
       const { data, error: invokeError } = await supabase.functions.invoke('notify-new-order', {
-        body: { orderId: order.id },
+        body: { orderId: order.id, resend: true },
       })
       if (invokeError) {
         const response = (invokeError as { context?: Response }).context
@@ -261,14 +252,15 @@ export function OrdersTable() {
         const safeMessage = typeof responseBody?.error === 'string'
           ? responseBody.error
           : 'Notification failed. See admin diagnostics.'
-        console.error('Retry Telegram function failed.', { orderId: order.id, orderReference: order.order_reference, functionName: 'notify-new-order', httpStatus: response?.status ?? null, message: safeMessage })
+        console.error('Resend Telegram function failed.', { orderId: order.id, orderReference: order.order_reference, functionName: 'notify-new-order', httpStatus: response?.status ?? null, message: safeMessage })
         throw new Error(safeMessage)
       }
       if (data?.error) throw new Error(data.error)
-      console.info('Retry Telegram function completed.', { orderId: order.id, orderReference: order.order_reference, functionName: 'notify-new-order', response: data?.message ?? 'No message returned.' })
+      console.info('Resend Telegram function completed.', { orderId: order.id, orderReference: order.order_reference, functionName: 'notify-new-order', notificationType: data?.notificationType ?? 'unknown', response: data?.message ?? 'No message returned.' })
+      setTelegramFeedback(typeof data?.message === 'string' ? data.message : 'Telegram notification sent.')
       await load()
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Telegram notification could not be retried.')
+      setError(caught instanceof Error ? caught.message : 'Telegram notification could not be sent.')
       await load()
     } finally {
       setRetryingOrderId(null)
@@ -278,13 +270,10 @@ export function OrdersTable() {
   return <section className={styles.panel}>
     <div className={styles.panelHeader}><h2>Orders</h2><span>{orders.length} orders</span></div>
     {error && <p className={styles.errorMessage}>{error}</p>}
+    {telegramFeedback && <p className={styles.status}>{telegramFeedback}</p>}
     <div className={styles.tableWrap}><table className={styles.table}>
       <thead><tr><th>Reference</th><th>Customer</th><th>Delivery</th><th>Payment</th><th>Amounts</th><th>Status</th><th>Proof</th></tr></thead>
       <tbody>{orders.map((order) => {
-        const notificationMayBeRetried = order.telegram_notification_status === 'failed' || (
-          order.telegram_notification_status === 'pending' &&
-          (!order.telegram_notification_attempted_at || Date.now() - new Date(order.telegram_notification_attempted_at).getTime() > 30_000)
-        )
         const proofDiagnostic = proofDiagnostics[order.id]
 
         return <tr key={order.id}>
@@ -297,7 +286,8 @@ export function OrdersTable() {
           <select value={order.payment_status} onChange={(event) => void update(order, 'payment_status', event.target.value)}><option value="pending_verification">Pending verification</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select>
           <select value={order.order_status} onChange={(event) => void update(order, 'order_status', event.target.value)}><option value="pending">Pending</option><option value="reservation_pending">Reservation pending</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option></select>
           <span className={styles.status}>Telegram {order.telegram_notification_status}</span>
-          {notificationMayBeRetried && <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" disabled={retryingOrderId === order.id} onClick={() => void retryTelegram(order)}>{retryingOrderId === order.id ? 'Retrying…' : 'Retry Telegram'}</button>}
+          <span className={styles.status}>Type {order.telegram_notification_type ?? 'not recorded'}</span>
+          <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" disabled={retryingOrderId === order.id} onClick={() => void resendTelegram(order)}>{retryingOrderId === order.id ? 'Resending…' : 'Resend Telegram Notification'}</button>
         </td>
         <td><button className={`${styles.tableAction} ${styles.proofAction}`} type="button" onClick={() => void proof(order)}>View Payment Proof</button>{proofDiagnostic && <details className={styles.proofDiagnostic}><summary>Proof diagnostics</summary><dl><div><dt>Stored path</dt><dd>{proofDiagnostic.storedPath || 'None'}</dd></div><div><dt>Bucket</dt><dd>{proofDiagnostic.bucket}</dd></div><div><dt>Lookup paths</dt><dd>{proofDiagnostic.lookupPaths.join(' · ') || 'None'}</dd></div><div><dt>Object exists</dt><dd>{proofDiagnostic.objectExists ? 'Yes' : 'No'}</dd></div><div><dt>Matching objects</dt><dd>{proofDiagnostic.matchingObjects.join(' · ') || 'None found'}</dd></div><div><dt>Storage error</dt><dd>{proofDiagnostic.storageError || 'None'}</dd></div><div><dt>Authenticated user</dt><dd>{proofDiagnostic.authenticatedUserId || 'No session'}</dd></div><div><dt>Admin role</dt><dd>{proofDiagnostic.appMetadataRole || 'Missing'}</dd></div><div><dt>Signed URL</dt><dd>{proofDiagnostic.signedUrl ? <a href={proofDiagnostic.signedUrl} target="_blank" rel="noreferrer">Open secure proof link</a> : 'Not generated'}</dd></div><div><dt>Result</dt><dd>{proofDiagnostic.message}</dd></div></dl></details>}</td>
       </tr>
