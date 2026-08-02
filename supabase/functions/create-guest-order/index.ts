@@ -20,7 +20,9 @@ Deno.serve(async (request) => {
     const { data, error } = await admin.rpc('create_guest_order', { payload: body })
     if (error || !data?.[0]) return reply({ error: error?.message ?? 'Order could not be created.' }, 400)
     const order = data[0]
-    if (proofRequired) {
+    const { data: savedOrder, error: savedOrderError } = await admin.from('orders').select('payment_proof_path').eq('id', order.order_id).single()
+    if (savedOrderError || !savedOrder) return reply({ error: 'Order could not be finalized. Please try again.' }, 500)
+    if (proofRequired && !savedOrder.payment_proof_path) {
       const extension = body.payment_proof.contentType === 'image/png' ? 'png' : body.payment_proof.contentType === 'image/webp' ? 'webp' : 'jpg'
       const path = `payment-proofs/${order.order_reference}/${crypto.randomUUID()}.${extension}`
       const { error: uploadError } = await admin.storage.from('payment-proofs').upload(path, proofBytes!, { contentType: body.payment_proof.contentType, upsert: false })
@@ -28,6 +30,22 @@ Deno.serve(async (request) => {
       const { error: proofError } = await admin.from('orders').update({ payment_proof_path: path }).eq('id', order.order_id)
       if (proofError) { await admin.storage.from('payment-proofs').remove([path]); await admin.from('orders').delete().eq('id', order.order_id); return reply({ error: 'Order could not be finalized. Please try again.' }, 500) }
     }
+
+    try {
+      const notificationResponse = await fetch(`${url}/functions/v1/notify-new-order`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: order.order_id }),
+      })
+      if (!notificationResponse.ok) {
+        console.error('Order notification was not sent.', { orderId: order.order_id, orderReference: order.order_reference, status: notificationResponse.status })
+        await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_error: 'Order notification could not be completed.' }).eq('id', order.order_id).is('telegram_notification_attempted_at', null)
+      }
+    } catch (notificationError) {
+      console.error('Order notification could not be invoked.', { orderId: order.order_id, orderReference: order.order_reference, notificationError })
+      await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_error: 'Order notification could not be started.' }).eq('id', order.order_id).is('telegram_notification_attempted_at', null)
+    }
+
     return reply({ order: { ...order, payment_status: 'pending_verification' } }, 201)
   } catch { return reply({ error: 'Checkout could not be completed. Please try again.' }, 500) }
 })

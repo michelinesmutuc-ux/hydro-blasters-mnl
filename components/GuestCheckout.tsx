@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase/client'
 import { useCart } from './CartProvider'
@@ -40,6 +40,7 @@ export function GuestCheckout() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [qrAvailable, setQrAvailable] = useState(true)
+  const orderAttemptKey = useRef(crypto.randomUUID())
 
   const bulky = lines.some((line) => line.shipping_classification === 'bulky')
   const shipping = delivery === 'nationwide_delivery' ? (bulky ? 199 : 149) : 0
@@ -94,7 +95,7 @@ export function GuestCheckout() {
           payment_method: payment,
           payment_option_name: getPaymentOption(payment, bankOptionId)?.name ?? null,
           items: lines.map((line) => ({ product_id: line.id, quantity: line.quantity })),
-          idempotency_key: crypto.randomUUID(),
+          idempotency_key: orderAttemptKey.current,
           payment_proof: proof ? { base64: await fileToBase64(proof), contentType: proof.type } : null,
         },
       })
