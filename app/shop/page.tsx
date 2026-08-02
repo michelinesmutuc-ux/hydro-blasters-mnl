@@ -17,7 +17,7 @@ export default function ShopPage() {
       <header className="site-header">
         <a className="brand" href="/" aria-label="Go to Home"><img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span className="brand-home-label" aria-hidden="true">Home</span></a>
         <PrimaryNavigation />
-        <div className="header-actions"><button className="icon-button" type="button" aria-label="Search">⌕</button><CartLink /></div>
+        <div className="header-actions"><CartLink /></div>
       </header>
       <main>
         <section className="section shop-section">
