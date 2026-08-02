@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { HelpCenterShell } from '../../../components/HelpCenter'
+import { JsonLd } from '../../../components/JsonLd'
+import { breadcrumbStructuredData } from '../../../lib/seo/structured-data'
 
 const sections = [
   { title: 'Getting started', items: [
@@ -52,7 +54,7 @@ const sections = [
 ] as const
 
 export default function FaqPage() {
-  return <HelpCenterShell current="/help/faq"><p className="eyebrow">Help Center</p><h1>Frequently Asked Questions</h1><p className="help-intro">Quick answers for choosing, using, maintaining, ordering, and enjoying gel blasters responsibly.</p>
+  return <HelpCenterShell current="/help/faq"><JsonLd data={breadcrumbStructuredData([{ name: 'Home', path: '/' }, { name: 'Help Center', path: '/help/faq' }, { name: 'Frequently Asked Questions', path: '/help/faq' }])} /><p className="eyebrow">Help Center</p><h1>Frequently Asked Questions</h1><p className="help-intro">Quick answers for choosing, using, maintaining, ordering, and enjoying gel blasters responsibly.</p>
     {sections.map((section) => <section className="faq-section" key={section.title}><h2>{section.title}</h2>{section.items.map(([question, answer]) => <details key={question}><summary>{question}</summary><p>{answer}</p></details>)}</section>)}
     <section><h2>Read the full policies</h2><p><Link href="/help/getting-started">Getting Started</Link> · <Link href="/policies/warranty">Warranty Policy</Link> · <Link href="/policies/shipping">Shipping Policy</Link> · <Link href="/policies/appointments">Appointment Policy</Link></p></section>
   </HelpCenterShell>

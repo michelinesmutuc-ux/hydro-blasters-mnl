@@ -2,9 +2,13 @@ import Link from 'next/link'
 import { CartLink } from '../../components/CartLink'
 import { ShowroomLocationActions } from '../../components/ShowroomLocationActions'
 import { SiteFooter } from '../../components/SiteFooter'
+import { JsonLd } from '../../components/JsonLd'
+import { breadcrumbStructuredData, localBusinessStructuredData } from '../../lib/seo/structured-data'
 
 export default function VisitShowroomPage() {
   return <div className="site-shell">
+    <JsonLd data={localBusinessStructuredData()} />
+    <JsonLd data={breadcrumbStructuredData([{ name: 'Home', path: '/' }, { name: 'Visit Our Showroom', path: '/visit-showroom' }])} />
     <div className="announcement"><span aria-hidden="true" />STORE INFORMATION COMING SOON</div>
     <header className="site-header">
       <Link className="brand" href="/" aria-label="Go to Home"><img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span className="brand-home-label" aria-hidden="true">Home</span></Link>

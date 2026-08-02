@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { HelpCenterShell, HelpTip } from '../../../components/HelpCenter'
+import { JsonLd } from '../../../components/JsonLd'
+import { breadcrumbStructuredData } from '../../../lib/seo/structured-data'
 
 export default function ShippingPolicyPage() {
-  return <HelpCenterShell current="/policies/shipping"><p className="eyebrow">Store Policy</p><h1>Shipping Policy</h1>
+  return <HelpCenterShell current="/policies/shipping"><JsonLd data={breadcrumbStructuredData([{ name: 'Home', path: '/' }, { name: 'Shipping Policy', path: '/policies/shipping' }])} /><p className="eyebrow">Store Policy</p><h1>Shipping Policy</h1>
     <HelpTip><h2>Nationwide Flat Rate Shipping</h2><p><strong>Accessories and magazines only:</strong> ₱149</p><p><strong>Orders containing at least one gel blaster or bulky item:</strong> ₱199</p><p>Mixed orders containing a gel blaster use the ₱199 bulky-item rate.</p></HelpTip>
     <section><h2>Order processing</h2><ul><li>Orders are processed after the required payment or COD charges due now have been submitted and verified.</li><li>Payment verification may take up to 24 hours.</li><li>Customers may follow up through the official Facebook account: Hydro Blasters MNL.</li><li>Processing time is separate from courier delivery time.</li></ul></section>
     <section><h2>Delivery times</h2><p>Delivery times depend on the destination, courier, weather, holidays, and other circumstances outside Hydro Blasters MNL’s control.</p></section>

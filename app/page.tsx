@@ -1,10 +1,13 @@
 import { PublicProducts } from '../components/PublicProducts'
 import { CartLink } from '../components/CartLink'
 import { SiteFooter } from '../components/SiteFooter'
+import { JsonLd } from '../components/JsonLd'
+import { organizationStructuredData } from '../lib/seo/structured-data'
 
 export default function Home() {
   return (
     <div className="site-shell">
+      <JsonLd data={organizationStructuredData()} />
       <div className="announcement"><span aria-hidden="true" />STORE INFORMATION COMING SOON</div>
       <header className="site-header">
         <a className="brand" href="#top" aria-label="Go to Home">

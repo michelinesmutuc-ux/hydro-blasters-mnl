@@ -1,8 +1,11 @@
 import Link from 'next/link'
 import { HelpCenterShell, HelpTip } from '../../../components/HelpCenter'
+import { JsonLd } from '../../../components/JsonLd'
+import { breadcrumbStructuredData } from '../../../lib/seo/structured-data'
 
 export default function GettingStartedPage() {
   return <HelpCenterShell current="/help/getting-started">
+    <JsonLd data={breadcrumbStructuredData([{ name: 'Home', path: '/' }, { name: 'Help Center', path: '/help/faq' }, { name: 'Getting Started', path: '/help/getting-started' }])} />
     <p className="eyebrow">Help Center</p><h1>Getting Started with Gel Blasters</h1>
     <p className="help-intro">New to gel blasters? This guide covers the basics, choosing your first unit, batteries, gel balls, maintenance, shipping, and showroom visits.</p>
 

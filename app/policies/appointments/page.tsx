@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { HelpCenterShell, HelpTip } from '../../../components/HelpCenter'
+import { JsonLd } from '../../../components/JsonLd'
+import { breadcrumbStructuredData } from '../../../lib/seo/structured-data'
 
 export default function AppointmentPolicyPage() {
-  return <HelpCenterShell current="/policies/appointments"><p className="eyebrow">Store Policy</p><h1>Showroom Appointment Policy</h1><HelpTip><h2>Our showroom is by appointment for customers planning to purchase.</h2></HelpTip>
+  return <HelpCenterShell current="/policies/appointments"><JsonLd data={breadcrumbStructuredData([{ name: 'Home', path: '/' }, { name: 'Showroom Appointment Policy', path: '/policies/appointments' }])} /><p className="eyebrow">Store Policy</p><h1>Showroom Appointment Policy</h1><HelpTip><h2>Our showroom is by appointment for customers planning to purchase.</h2></HelpTip>
     <section><h2>Browsing</h2><p>Still exploring? Our website is the best place to browse the catalogue and compare products.</p></section>
     <section><h2>Booking</h2><p>Customers must submit an appointment request and identify the products they plan to purchase. Hydro Blasters MNL checks product availability before confirming the visit.</p></section>
     <section><h2>Confirmation</h2><p>Submitting a request does not mean the appointment is automatically confirmed. Customers should wait for direct confirmation before travelling to the showroom.</p></section>

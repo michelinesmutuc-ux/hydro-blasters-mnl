@@ -1,8 +1,10 @@
 import Link from 'next/link'
 import { HelpCenterShell, HelpTip } from '../../../components/HelpCenter'
+import { JsonLd } from '../../../components/JsonLd'
+import { breadcrumbStructuredData } from '../../../lib/seo/structured-data'
 
 export default function WarrantyPage() {
-  return <HelpCenterShell current="/policies/warranty"><p className="eyebrow">Store Policy</p><h1>Limited Warranty Policy</h1><HelpTip><h2>30-day limited warranty for manufacturing defects only.</h2></HelpTip>
+  return <HelpCenterShell current="/policies/warranty"><JsonLd data={breadcrumbStructuredData([{ name: 'Home', path: '/' }, { name: 'Warranty Policy', path: '/policies/warranty' }])} /><p className="eyebrow">Store Policy</p><h1>Limited Warranty Policy</h1><HelpTip><h2>30-day limited warranty for manufacturing defects only.</h2></HelpTip>
     <section><h2>Coverage</h2><p>The limited warranty covers manufacturing defects in eligible gel blaster products supplied by Hydro Blasters MNL. The warranty is valid for 30 days from the date of purchase.</p></section>
     <section><h2>Not covered</h2><ul><li>Misuse, abuse, neglect, or accidents</li><li>Improper handling or failure to follow supplied instructions</li><li>Normal wear and tear</li><li>Customer modifications, alterations, unauthorized repairs, or disassembly</li><li>Incompatible batteries, chargers, ammunition, parts, or upgrades</li><li>Incorrect installation or user error</li><li>Cosmetic issues that do not affect normal function</li><li>Consumable or wear components unless failure is caused by a confirmed manufacturing defect</li></ul></section>
     <HelpTip warning><h2>Modifications</h2><p>Any modification, internal upgrade, unauthorized repair, or alteration may void the warranty.</p></HelpTip>

@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { CartLink } from '../../components/CartLink'
 import { SiteFooter } from '../../components/SiteFooter'
+import { JsonLd } from '../../components/JsonLd'
+import { breadcrumbStructuredData } from '../../lib/seo/structured-data'
 
 const milestones = [
   ['March 2021', 'Hydro Blasters MNL was established.'],
@@ -11,6 +13,7 @@ const milestones = [
 
 export default function AboutPage() {
   return <div className="site-shell">
+    <JsonLd data={breadcrumbStructuredData([{ name: 'Home', path: '/' }, { name: 'About Us', path: '/about' }])} />
     <div className="announcement"><span aria-hidden="true" />STORE INFORMATION COMING SOON</div>
     <header className="site-header">
       <Link className="brand" href="/" aria-label="Go to Home"><img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span className="brand-home-label" aria-hidden="true">Home</span></Link>
