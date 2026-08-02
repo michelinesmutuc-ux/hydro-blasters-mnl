@@ -25,19 +25,35 @@ type Order = {
   order_notes: string | null
 }
 
-type ProofAvailability = 'checking' | 'available' | 'missing' | 'unknown'
+type ProofDiagnostic = {
+  orderId: string
+  orderReference: string
+  storedPath: string
+  bucket: string
+  lookupPaths: string[]
+  matchingObjects: string[]
+  objectExists: boolean
+  signedUrl: string | null
+  message: string
+}
 
 function getProofPathCandidates(storedPath: string) {
   const normalizedPath = storedPath.trim()
   if (!normalizedPath || /^https?:\/\//i.test(normalizedPath) || normalizedPath.startsWith('/')) return []
-  return [...new Set([normalizedPath, normalizedPath.replace(/^payment-proofs\//, '')])]
+  const innerPath = normalizedPath.replace(/^(?:payment-proofs|payment\/proofs)\//, '')
+  return [...new Set([
+    normalizedPath,
+    innerPath,
+    `payment-proofs/${innerPath}`,
+    `payment/proofs/${innerPath}`,
+  ])]
 }
 
 export function OrdersTable() {
   const [orders, setOrders] = useState<Order[]>([])
   const [error, setError] = useState<string | null>(null)
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null)
-  const [proofAvailability, setProofAvailability] = useState<Record<string, ProofAvailability>>({})
+  const [proofDiagnostics, setProofDiagnostics] = useState<Record<string, ProofDiagnostic>>({})
 
   async function load() {
     const { data, error: loadError } = await supabase
@@ -51,23 +67,6 @@ export function OrdersTable() {
 
     const rows = (data ?? []) as Order[]
     setOrders(rows)
-    setProofAvailability(Object.fromEntries(rows.map((order) => [order.id, order.payment_proof_path ? 'checking' : 'missing'])))
-
-    const availabilityEntries = await Promise.all(rows.map(async (order) => {
-      const candidatePaths = getProofPathCandidates(order.payment_proof_path ?? '')
-      if (!candidatePaths.length) return [order.id, 'missing'] as const
-
-      let hadUnexpectedError = false
-      for (const candidatePath of candidatePaths) {
-        const { data: signedProof, error: signedProofError } = await supabase.storage
-          .from('payment-proofs')
-          .createSignedUrl(candidatePath, 10)
-        if (!signedProofError && signedProof?.signedUrl) return [order.id, 'available'] as const
-        if (!/object not found/i.test(signedProofError?.message ?? '')) hadUnexpectedError = true
-      }
-      return [order.id, hadUnexpectedError ? 'unknown' : 'missing'] as const
-    }))
-    setProofAvailability(Object.fromEntries(availabilityEntries))
   }
 
   useEffect(() => { void load() }, [])
@@ -76,10 +75,27 @@ export function OrdersTable() {
     const storedPath = order.payment_proof_path?.trim() ?? ''
     const candidatePaths = getProofPathCandidates(storedPath)
     if (!candidatePaths.length) {
+      setProofDiagnostics((current) => ({ ...current, [order.id]: {
+        orderId: order.id,
+        orderReference: order.order_reference,
+        storedPath,
+        bucket: 'payment-proofs',
+        lookupPaths: [],
+        matchingObjects: [],
+        objectExists: false,
+        signedUrl: null,
+        message: 'Stored payment-proof path is invalid.',
+      } }))
       setError('Stored payment-proof path is invalid.')
       return
     }
 
+    const foldersToInspect = [...new Set(candidatePaths.map((path) => path.split('/').slice(0, -1).join('/')).filter(Boolean))]
+    const objectListings = await Promise.all(foldersToInspect.map(async (folder) => {
+      const { data } = await supabase.storage.from('payment-proofs').list(folder, { limit: 100 })
+      return (data ?? []).map((object) => `${folder}/${object.name}`)
+    }))
+    const matchingObjects = objectListings.flat()
     let lastError: { message: string } | null = null
     console.info('Payment proof link request.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', storedPath, candidatePaths })
 
@@ -96,7 +112,17 @@ export function OrdersTable() {
           if (repairError) console.warn('Payment proof path repair failed.', { orderId: order.id, message: repairError.message })
         }
         console.info('Payment proof signed link created.', { orderId: order.id, orderReference: order.order_reference, bucket: 'payment-proofs', objectPath: candidatePath })
-        setProofAvailability((current) => ({ ...current, [order.id]: 'available' }))
+        setProofDiagnostics((current) => ({ ...current, [order.id]: {
+          orderId: order.id,
+          orderReference: order.order_reference,
+          storedPath,
+          bucket: 'payment-proofs',
+          lookupPaths: candidatePaths,
+          matchingObjects,
+          objectExists: true,
+          signedUrl: data.signedUrl,
+          message: candidatePath === storedPath ? 'Proof object found at the stored path.' : 'Proof object found at an alternate path. The saved path was repaired.',
+        } }))
         window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
         return
       }
@@ -105,10 +131,31 @@ export function OrdersTable() {
     }
 
     if (/object not found/i.test(lastError?.message ?? '')) {
-      setProofAvailability((current) => ({ ...current, [order.id]: 'missing' }))
-      setError('Payment proof file is missing.')
+      setProofDiagnostics((current) => ({ ...current, [order.id]: {
+        orderId: order.id,
+        orderReference: order.order_reference,
+        storedPath,
+        bucket: 'payment-proofs',
+        lookupPaths: candidatePaths,
+        matchingObjects,
+        objectExists: false,
+        signedUrl: null,
+        message: 'Payment proof was not uploaded successfully for this order.',
+      } }))
+      setError('Payment proof was not uploaded successfully for this order.')
       return
     }
+    setProofDiagnostics((current) => ({ ...current, [order.id]: {
+      orderId: order.id,
+      orderReference: order.order_reference,
+      storedPath,
+      bucket: 'payment-proofs',
+      lookupPaths: candidatePaths,
+      matchingObjects,
+      objectExists: false,
+      signedUrl: null,
+      message: 'Could not generate a secure proof link.',
+    } }))
     setError(lastError ? 'Could not generate a secure proof link.' : 'Payment proof file is missing.')
   }
 
@@ -179,9 +226,7 @@ export function OrdersTable() {
           order.telegram_notification_status === 'pending' &&
           (!order.telegram_notification_attempted_at || Date.now() - new Date(order.telegram_notification_attempted_at).getTime() > 30_000)
         )
-        const currentProofAvailability = proofAvailability[order.id] ?? 'checking'
-        const proofIsUnavailable = currentProofAvailability === 'missing'
-        const proofIsChecking = currentProofAvailability === 'checking'
+        const proofDiagnostic = proofDiagnostics[order.id]
 
         return <tr key={order.id}>
         <td>{order.order_reference}</td>
@@ -195,7 +240,7 @@ export function OrdersTable() {
           <span className={styles.status}>Telegram {order.telegram_notification_status}</span>
           {notificationMayBeRetried && <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" disabled={retryingOrderId === order.id} onClick={() => void retryTelegram(order)}>{retryingOrderId === order.id ? 'Retrying…' : 'Retry Telegram'}</button>}
         </td>
-        <td><button className={`${styles.tableAction} ${styles.proofAction}`} type="button" disabled={proofIsUnavailable || proofIsChecking} onClick={() => void proof(order)}>{proofIsChecking ? 'Checking proof…' : proofIsUnavailable ? 'Proof Missing' : 'View Payment Proof'}</button></td>
+        <td><button className={`${styles.tableAction} ${styles.proofAction}`} type="button" onClick={() => void proof(order)}>View Payment Proof</button>{proofDiagnostic && <details className={styles.proofDiagnostic}><summary>Proof diagnostics</summary><dl><div><dt>Stored path</dt><dd>{proofDiagnostic.storedPath || 'None'}</dd></div><div><dt>Bucket</dt><dd>{proofDiagnostic.bucket}</dd></div><div><dt>Lookup paths</dt><dd>{proofDiagnostic.lookupPaths.join(' · ') || 'None'}</dd></div><div><dt>Object exists</dt><dd>{proofDiagnostic.objectExists ? 'Yes' : 'No'}</dd></div><div><dt>Matching objects</dt><dd>{proofDiagnostic.matchingObjects.join(' · ') || 'None found'}</dd></div><div><dt>Signed URL</dt><dd>{proofDiagnostic.signedUrl ? <a href={proofDiagnostic.signedUrl} target="_blank" rel="noreferrer">Open secure proof link</a> : 'Not generated'}</dd></div><div><dt>Result</dt><dd>{proofDiagnostic.message}</dd></div></dl></details>}</td>
       </tr>
       })}</tbody>
     </table></div>
