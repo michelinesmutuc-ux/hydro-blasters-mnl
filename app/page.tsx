@@ -1,4 +1,3 @@
-import { FeaturedCategories } from '../components/FeaturedCategories'
 import { PublicProducts } from '../components/PublicProducts'
 import { CartLink } from '../components/CartLink'
 import { SiteFooter } from '../components/SiteFooter'
@@ -38,11 +37,6 @@ export default function Home() {
           <div className="hero-placeholder" aria-label="Product image placeholder">
             <span>Product image placeholder</span>
           </div>
-        </section>
-
-        <section className="section" id="categories">
-          <div className="section-heading"><p className="eyebrow">Browse</p><h2>Featured categories</h2></div>
-          <FeaturedCategories />
         </section>
 
         <section className="section section-arrivals" id="shop">
