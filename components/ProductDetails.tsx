@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ProductImageFrame } from './ProductImageFrame'
 import { CompareButton } from './CompareButton'
@@ -37,27 +37,34 @@ function ProductUnavailable() {
 }
 
 function ProductPurchaseActions({ product }: { product: Product }) {
-  const { add } = useCart()
+  const { add, lines, subtotal } = useCart()
   const [quantity, setQuantity] = useState(1)
-  const [confirmation, setConfirmation] = useState<{ type: 'cart' | 'buy'; quantity: number } | null>(null)
+  const [confirmation, setConfirmation] = useState<'cart' | 'buy' | null>(null)
+  const [reviewRequested, setReviewRequested] = useState(false)
   const [buyingNow, setBuyingNow] = useState(false)
   const buyNowLock = useRef(false)
   const unavailableReason = product.stock < 1 || product.status === 'out_of_stock' ? 'Out of stock' : ''
   const cartProduct = { ...product, image_urls: product.image_urls ?? [] }
 
+  useEffect(() => {
+    if (!reviewRequested) return
+    setConfirmation('buy')
+    setReviewRequested(false)
+    setBuyingNow(false)
+  }, [lines, reviewRequested])
+
   function addToCart() {
     if (unavailableReason) return
     add(cartProduct, quantity)
-    setConfirmation({ type: 'cart', quantity })
+    setConfirmation('cart')
   }
 
   function buyNow() {
-    if (unavailableReason || buyingNow || buyNowLock.current || confirmation?.type === 'buy') return
+    if (unavailableReason || buyingNow || buyNowLock.current || confirmation === 'buy') return
     buyNowLock.current = true
     setBuyingNow(true)
     add(cartProduct, quantity)
-    setConfirmation({ type: 'buy', quantity })
-    setBuyingNow(false)
+    setReviewRequested(true)
   }
 
   function changeQuantity(nextQuantity: number) {
@@ -71,7 +78,7 @@ function ProductPurchaseActions({ product }: { product: Product }) {
   return <div className="product-purchase-actions">
     <label className="product-quantity-control">Quantity<div><button type="button" aria-label={`Decrease ${product.name} quantity`} disabled={quantity <= 1} onClick={() => changeQuantity(quantity - 1)}>−</button><output aria-label={`${product.name} quantity`}>{quantity}</output><button type="button" aria-label={`Increase ${product.name} quantity`} disabled={quantity >= product.stock} onClick={() => changeQuantity(Math.min(product.stock, quantity + 1))}>+</button></div></label>
     <div className="product-purchase-buttons"><button type="button" className="secondary-button" onClick={addToCart}>Add to Cart</button><button type="button" className="primary-button" disabled={buyingNow} onClick={buyNow}>{buyingNow ? 'Opening Checkout…' : 'Buy Now'}</button></div>
-    {confirmation && <div className="product-cart-confirmation" role="status">{confirmation.type === 'buy' ? <><strong>✓ Ready to Checkout?</strong><dl><div><dt>Product</dt><dd>{product.name}</dd></div><div><dt>Quantity</dt><dd>{confirmation.quantity}</dd></div><div><dt>Price</dt><dd>₱{(Number(product.price) * confirmation.quantity).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div></dl></> : <span>✓ {product.name} added to your cart.</span>}<Link href="/checkout">Proceed to Checkout →</Link><button type="button" aria-label="Dismiss cart confirmation" onClick={() => { setConfirmation(null); buyNowLock.current = false }}>Dismiss</button></div>}
+    {confirmation && <div className="product-cart-confirmation" role="status">{confirmation === 'buy' ? lines.length > 0 ? <><strong>🛒 Review Your Cart</strong><dl className="product-cart-review">{lines.map((line) => <div key={line.id}><dt>{line.name}<small>Qty: {line.quantity} × ₱{Number(line.price).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</small></dt><dd>₱{(Number(line.price) * line.quantity).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd></div>)}</dl><div className="product-cart-total"><span>{lines.reduce((count, line) => count + line.quantity, 0)} items<br />Merchandise Total</span><strong>₱{subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div></> : <span>Unable to load your updated cart. Please review your cart before checkout.</span> : <span>✓ {product.name} added to your cart.</span>}<Link href="/checkout">Proceed to Checkout →</Link><button type="button" aria-label="Dismiss cart confirmation" onClick={() => { setConfirmation(null); buyNowLock.current = false }}>Dismiss</button></div>}
   </div>
 }
 
