@@ -40,14 +40,25 @@ export function GuestCheckout() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [qrAvailable, setQrAvailable] = useState(true)
-  const orderAttemptKey = useRef(crypto.randomUUID())
+  const orderAttemptKey = useRef<string | null>(null)
 
   const bulky = lines.some((line) => line.shipping_classification === 'bulky')
   const shipping = delivery === 'nationwide_delivery' ? (bulky ? 199 : 149) : 0
   const codFee = payment === 'cash_on_delivery' ? Math.ceil(subtotal * .01) : 0
   const pickup = payment === 'pay_upon_pickup'
   const dueNow = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : subtotal + shipping
+  const overallTotal = subtotal + shipping + codFee
   const proofNeeded = !pickup
+  const submitDisabled = saving || (payment !== null && proofNeeded && !qrAvailable) || (payment === 'bank_transfer' && !bankOptionId)
+  const submitLabel = saving
+    ? 'Placing order…'
+    : payment === 'cash_on_delivery'
+      ? `Submit COD Order — Pay ${peso(dueNow)} Now`
+      : payment === 'pay_upon_pickup'
+        ? 'Submit Reservation Request'
+        : payment
+          ? `Place Order — Pay ${peso(dueNow)} Now`
+          : 'Place Order'
 
   if (!lines.length) return <section className="section"><h1>Your cart is empty</h1></section>
 
@@ -75,6 +86,16 @@ export function GuestCheckout() {
     setProof(null)
   }
 
+  const getOrderAttemptKey = () => {
+    if (orderAttemptKey.current) return orderAttemptKey.current
+
+    const savedKey = sessionStorage.getItem('hydro-order-attempt-key')
+    const nextKey = savedKey || crypto.randomUUID()
+    sessionStorage.setItem('hydro-order-attempt-key', nextKey)
+    orderAttemptKey.current = nextKey
+    return nextKey
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     setError(null)
@@ -95,13 +116,14 @@ export function GuestCheckout() {
           payment_method: payment,
           payment_option_name: getPaymentOption(payment, bankOptionId)?.name ?? null,
           items: lines.map((line) => ({ product_id: line.id, quantity: line.quantity })),
-          idempotency_key: orderAttemptKey.current,
+          idempotency_key: getOrderAttemptKey(),
           payment_proof: proof ? { base64: await fileToBase64(proof), contentType: proof.type } : null,
         },
       })
       if (invokeError) throw invokeError
       if (data?.error) throw new Error(data.error)
       sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, customer_name: form.customer_name, delivery_method: delivery, payment_method: payment }))
+      sessionStorage.removeItem('hydro-order-attempt-key')
       clear()
       router.push('/order-confirmation')
     } catch (caught) {
@@ -110,6 +132,11 @@ export function GuestCheckout() {
       setSaving(false)
     }
   }
+
+  const SummarySubmit = ({ className = '' }: { className?: string }) => <div className={`checkout-submit ${className}`}>
+    {payment === 'cash_on_delivery' && <p>You will pay <strong>{peso(dueNow)}</strong> now. <strong>{peso(subtotal)}</strong> is payable to the rider upon delivery.</p>}
+    <button className="secondary-button" disabled={submitDisabled} type="submit">{submitLabel}</button>
+  </div>
 
   return <section className="section checkout-page">
     <header className="checkout-heading"><p className="eyebrow">Guest checkout</p><h1>Checkout</h1><p>Complete your details to submit your order for review.</p></header>
@@ -130,14 +157,15 @@ export function GuestCheckout() {
           <div className="payment-methods" role="radiogroup" aria-label="Payment method">
             {paymentMethods.map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.description}</small></span></button>)}
           </div>
-          {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><div><span>Shipping fee</span><strong>{peso(shipping)}</strong></div><div><span>COD service fee</span><strong>{peso(codFee)}</strong></div><div><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div></div>}
+          {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><section><h3>Pay Now</h3><div><span>Nationwide Flat Rate Shipping</span><strong>{peso(shipping)}</strong></div><div><span>1% COD service fee</span><strong>{peso(codFee)}</strong></div><div className="cod-primary-amount"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div></section><section><h3>Pay Upon Delivery</h3><div><span>Merchandise subtotal</span><strong>{peso(subtotal)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div></section><section className="cod-order-value"><h3>Order Value</h3><div><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></section></div>}
           {payment && proofNeeded && <PaymentQr method={payment} amount={dueNow} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
           {payment && proofNeeded && qrAvailable && <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input required type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => setProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proof && <img src={URL.createObjectURL(proof)} alt="Payment screenshot preview" />}</div>}
           {payment === 'pay_upon_pickup' && <label className="checkout-check"><input type="checkbox" checked={reservation} onChange={(event) => setReservation(event.target.checked)} /> I understand that this is only a reservation request and I must wait for Hydro Blasters MNL to confirm before visiting.</label>}
-          {payment === 'cash_on_delivery' && <label className="checkout-check"><input type="checkbox" checked={codConfirm} onChange={(event) => setCodConfirm(event.target.checked)} /> I understand that my COD order will only be processed after the shipping fee and COD service fee are paid and verified.</label>}
+          {payment === 'cash_on_delivery' && <label className="checkout-check"><input type="checkbox" checked={codConfirm} onChange={(event) => setCodConfirm(event.target.checked)} /> I understand that the shipping fee and COD service fee are due now, while the merchandise amount will be paid to the courier upon delivery.</label>}
         </section>
+        <section className="checkout-final-cta"><p className="eyebrow">Ready to submit your order?</p><SummarySubmit /></section>
       </div>
-      <aside className="checkout-summary"><h2>Order Summary</h2>{lines.map((line) => <p key={line.id}>{line.name} × {line.quantity} — {peso(Number(line.price) * line.quantity)}</p>)}<dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>Shipping</dt><dd>{peso(shipping)}</dd></div>{codFee > 0 && <div><dt>COD Fee</dt><dd>{peso(codFee)}</dd></div>}<div className="checkout-total"><dt>Total</dt><dd>{peso(subtotal + shipping + codFee)}</dd></div></dl><button className="secondary-button" disabled={saving || (payment !== null && proofNeeded && !qrAvailable) || (payment === 'bank_transfer' && !bankOptionId)} type="submit">{saving ? 'Placing order…' : 'Place Order'}</button></aside>
+      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>Shipping</dt><dd>{peso(shipping)}</dd></div><div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
     </form>
   </section>
 }

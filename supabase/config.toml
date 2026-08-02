@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.notify-new-appointment]
 verify_jwt = true
+
+[functions.notify-new-order]
+verify_jwt = true

@@ -39,13 +39,23 @@ Deno.serve(async (request) => {
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   if (!serviceRoleKey || !supabaseUrl) return json({ error: 'Order notification is not configured.' }, 503)
-  if (request.headers.get('Authorization') !== `Bearer ${serviceRoleKey}`) return json({ error: 'Not authorized.' }, 401)
+
+  const authorization = request.headers.get('Authorization')
+  const isInternalRequest = authorization === `Bearer ${serviceRoleKey}`
+  if (!isInternalRequest) {
+    if (!authorization?.startsWith('Bearer ')) return json({ error: 'Not authorized.' }, 401)
+    const authClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!)
+    const { data: authData, error: authError } = await authClient.auth.getUser(authorization.slice('Bearer '.length))
+    if (authError || authData.user?.app_metadata?.role !== 'admin') return json({ error: 'Not authorized.' }, 403)
+  }
+
+  const admin = createClient(supabaseUrl, serviceRoleKey)
+  let claimedOrderId: string | null = null
 
   try {
     const { orderId } = await request.json()
     if (!String(orderId ?? '').trim()) return json({ error: 'Order ID is required.' }, 400)
 
-    const admin = createClient(supabaseUrl, serviceRoleKey)
     const { data: order, error: orderError } = await admin
       .from('orders')
       .select('id,order_reference,customer_name,mobile_number,city_municipality,region,order_notes,delivery_method,payment_method,selected_payment_option_name,merchandise_subtotal,shipping_fee,cod_service_fee,upfront_amount,rider_collectible_amount,showroom_payable_amount,overall_total,payment_proof_path,payment_status,order_status,telegram_notification_status,telegram_notification_sent_at,telegram_notification_attempted_at')
@@ -67,6 +77,7 @@ Deno.serve(async (request) => {
       .maybeSingle()
     if (claimError) throw claimError
     if (!claimed) return json({ message: 'Notification already handled.' })
+    claimedOrderId = order.id
 
     const { data: items, error: itemsError } = await admin
       .from('order_items')
@@ -104,6 +115,16 @@ Deno.serve(async (request) => {
     return json({ message: 'Telegram notification sent.' }, 201)
   } catch (error) {
     console.error('Order notification failed.', error)
+    if (claimedOrderId) {
+      await admin
+        .from('orders')
+        .update({
+          telegram_notification_status: 'failed',
+          telegram_notification_error: 'Order notification could not be completed.',
+        })
+        .eq('id', claimedOrderId)
+        .eq('telegram_notification_status', 'pending')
+    }
     return json({ error: 'Telegram notification was not sent.' }, 500)
   }
 })

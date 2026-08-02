@@ -3,6 +3,24 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Content-Type': 'application/json' }
 const reply = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), { status, headers })
 
+async function triggerOrderNotification(admin: ReturnType<typeof createClient>, url: string, serviceKey: string, order: { order_id: string; order_reference: string }) {
+  try {
+    const notificationResponse = await fetch(`${url}/functions/v1/notify-new-order`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: order.order_id }),
+      signal: AbortSignal.timeout(12_000),
+    })
+    if (notificationResponse.ok) return
+
+    console.error('Order notification was not sent.', { orderId: order.order_id, orderReference: order.order_reference, status: notificationResponse.status })
+    await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_error: 'Order notification could not be completed.' }).eq('id', order.order_id).eq('telegram_notification_status', 'pending')
+  } catch (notificationError) {
+    console.error('Order notification could not be invoked.', { orderId: order.order_id, orderReference: order.order_reference, notificationError })
+    await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_error: 'Order notification timed out or could not be reached.' }).eq('id', order.order_id).eq('telegram_notification_status', 'pending')
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers })
   if (request.method !== 'POST') return reply({ error: 'Method not allowed.' }, 405)
@@ -31,20 +49,7 @@ Deno.serve(async (request) => {
       if (proofError) { await admin.storage.from('payment-proofs').remove([path]); await admin.from('orders').delete().eq('id', order.order_id); return reply({ error: 'Order could not be finalized. Please try again.' }, 500) }
     }
 
-    try {
-      const notificationResponse = await fetch(`${url}/functions/v1/notify-new-order`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: order.order_id }),
-      })
-      if (!notificationResponse.ok) {
-        console.error('Order notification was not sent.', { orderId: order.order_id, orderReference: order.order_reference, status: notificationResponse.status })
-        await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_error: 'Order notification could not be completed.' }).eq('id', order.order_id).is('telegram_notification_attempted_at', null)
-      }
-    } catch (notificationError) {
-      console.error('Order notification could not be invoked.', { orderId: order.order_id, orderReference: order.order_reference, notificationError })
-      await admin.from('orders').update({ telegram_notification_status: 'failed', telegram_notification_error: 'Order notification could not be started.' }).eq('id', order.order_id).is('telegram_notification_attempted_at', null)
-    }
+    EdgeRuntime.waitUntil(triggerOrderNotification(admin, url, serviceKey, order))
 
     return reply({ order: { ...order, payment_status: 'pending_verification' } }, 201)
   } catch { return reply({ error: 'Checkout could not be completed. Please try again.' }, 500) }
