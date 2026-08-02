@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchActiveProducts } from '../lib/supabase/products'
 import { ProductCard, type PublicProduct } from './ProductCard'
 import { getProductUrl } from '../lib/products/get-product-url'
+import { ShopFloatingCheckout } from './ShopFloatingCheckout'
 
 type SortOption = 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'name-asc'
 type ShopProduct = PublicProduct & {
@@ -134,5 +135,6 @@ export function ShopProducts() {
     </div>
     <div className="shop-filter-status"><span>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}{filters.category ? ` in ${filters.category}` : ''}</span></div>
     {matchingProducts.length > 0 ? <div className="product-grid">{matchingProducts.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <div className="catalogue-state">No active products match your current search and filters. Try clearing a filter or searching for something else.</div>}
+    <ShopFloatingCheckout />
   </div>
 }
