@@ -150,7 +150,7 @@ export function GuestCheckout() {
       })
       if (invokeError) throw invokeError
       if (data?.error) throw new Error(data.error)
-      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, customer_name: form.customer_name, delivery_method: delivery, payment_method: payment }))
+      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, customer_name: form.customer_name, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, quantity: line.quantity, line_total: Number(line.price) * line.quantity })) }))
       sessionStorage.removeItem('hydro-order-attempt-key')
       clear()
       router.push('/order-confirmation')

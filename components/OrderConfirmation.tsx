@@ -3,25 +3,38 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 
-type Order = Record<string, unknown>
-const peso = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value ?? 0))
+type ReceiptItem = { name: string; quantity: number; line_total: number }
+type Order = {
+  order_reference: string; customer_name: string; mobile_number?: string; city_municipality?: string; order_date?: string; items?: ReceiptItem[]
+  merchandise_subtotal: number | string; shipping_fee: number | string; cod_service_fee: number | string; upfront_amount: number | string; rider_collectible_amount: number | string; overall_total: number | string
+  payment_method: string; payment_status?: string; order_status?: string
+}
+const peso = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value ?? 0))
+const maskMobile = (mobile?: string) => mobile && mobile.length > 4 ? `${mobile.slice(0, 4)}•••${mobile.slice(-4)}` : 'Not provided'
+const titleCase = (value?: string) => (value || 'Pending verification').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+
+function downloadReceipt(order: Order) {
+  const canvas = document.createElement('canvas'); const width = 1080; const padding = 72
+  const items = order.items ?? []; const height = Math.max(1040, 650 + items.length * 72)
+  canvas.width = width; canvas.height = height
+  const context = canvas.getContext('2d'); if (!context) return false
+  context.fillStyle = '#101015'; context.fillRect(0, 0, width, height)
+  context.strokeStyle = '#72eaff'; context.lineWidth = 3; context.strokeRect(28, 28, width - 56, height - 56)
+  let y = padding; const line = (text: string, size = 28, color = '#f5f4f7', weight = '400') => { context.fillStyle = color; context.font = `${weight} ${size}px Arial`; context.fillText(text, padding, y); y += size + 18 }
+  const pair = (label: string, value: string) => { context.fillStyle = '#a09fac'; context.font = '700 20px Arial'; context.fillText(label.toUpperCase(), padding, y); context.fillStyle = '#f5f4f7'; context.font = '700 24px Arial'; context.textAlign = 'right'; context.fillText(value, width - padding, y); context.textAlign = 'left'; y += 46 }
+  line('HYDRO BLASTERS MNL', 30, '#72eaff', '700'); line('ORDER RECEIPT', 22, '#a09fac', '700'); y += 12
+  pair('Order Number', order.order_reference); pair('Order Date', new Date(order.order_date || Date.now()).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })); pair('Customer', order.customer_name); pair('Mobile', maskMobile(order.mobile_number)); pair('City', order.city_municipality || 'Not provided')
+  line('PURCHASED ITEMS', 20, '#72eaff', '700'); items.forEach((item) => { line(`${item.name}  × ${item.quantity}`, 23); pair('Line subtotal', peso(item.line_total)) })
+  pair('Merchandise', peso(order.merchandise_subtotal)); if (Number(order.shipping_fee) > 0) pair('Shipping', peso(order.shipping_fee)); if (Number(order.cod_service_fee) > 0) pair('COD Fee', peso(order.cod_service_fee)); pair('Amount Due Now', peso(order.upfront_amount)); if (Number(order.rider_collectible_amount) > 0) pair('Amount Due to Rider', peso(order.rider_collectible_amount)); pair('Overall Order Value', peso(order.overall_total)); pair('Current Order Status', titleCase(order.order_status || order.payment_status)); line('Save this receipt to track your order later.', 18, '#a09fac')
+  const link = document.createElement('a'); link.download = `hydro-blasters-mnl-${order.order_reference}-receipt.png`; link.href = canvas.toDataURL('image/png'); link.click(); return true
+}
 
 export function OrderConfirmation() {
-  const [order, setOrder] = useState<Order | null>(null)
+  const [order, setOrder] = useState<Order | null>(null); const [copied, setCopied] = useState(false); const [downloadError, setDownloadError] = useState<string | null>(null)
   useEffect(() => { try { setOrder(JSON.parse(sessionStorage.getItem('hydro-order-confirmation') ?? 'null')) } catch {} }, [])
-
   if (!order) return <section className="section"><h1>Order confirmation unavailable</h1><p>Please contact Hydro Blasters MNL if you need help with an order.</p></section>
-
-  const isCod = order.payment_method === 'cash_on_delivery'
-  return <section className="section order-confirmation">
-    <p className="eyebrow">Order submitted</p>
-    <h1>Thank you, {String(order.customer_name)}</h1>
-    <p>Order reference: <strong>{String(order.order_reference)}</strong></p>
-    <p>Delivery: {String(order.delivery_method).replaceAll('_', ' ')}</p>
-    <p>Payment: {String(order.payment_method).replaceAll('_', ' ')}</p>
-    <p>Payment status: Pending Verification</p>
-    {isCod ? <div className="confirmation-cod-summary"><p><span>Amount Due Now</span><strong>{peso(order.upfront_amount)}</strong></p><p><span>Amount Due to Rider</span><strong>{peso(order.rider_collectible_amount)}</strong></p><p><span>Overall Order Total</span><strong>{peso(order.overall_total)}</strong></p></div> : <p>Amount Due Now: <strong>{peso(order.upfront_amount)}</strong></p>}
-    <p>{isCod ? 'Your order will be processed after the Amount Due Now has been paid and verified.' : 'Payment verification may take up to 24 hours. If your payment has not yet been verified after 24 hours, you may follow up through the Facebook account: Hydro Blasters MNL.'}</p>
-    <Link className="primary-button" href="/shop">Continue shopping</Link>
-  </section>
+  const confirmedOrder = order
+  const items = confirmedOrder.items ?? []
+  async function copyReference() { try { await navigator.clipboard.writeText(confirmedOrder.order_reference); setCopied(true) } catch { setCopied(false) } }
+  return <section className="section order-confirmation"><header><p className="eyebrow">✅ Order Received</p><h1>Thank you!</h1><p>Thank you! Your order has been received successfully.</p><strong className="order-reference">{confirmedOrder.order_reference}</strong><p>Save this receipt so you can track your order later.</p></header><article className="receipt-card" id="order-receipt"><div className="receipt-brand">Hydro Blasters MNL<span>Order Receipt</span></div><dl className="receipt-details"><div><dt>Order Number</dt><dd>{confirmedOrder.order_reference}</dd></div><div><dt>Order Date</dt><dd>{new Date(confirmedOrder.order_date || Date.now()).toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })}</dd></div><div><dt>Customer Name</dt><dd>{confirmedOrder.customer_name}</dd></div><div><dt>Mobile Number</dt><dd>{maskMobile(confirmedOrder.mobile_number)}</dd></div><div><dt>City / Municipality</dt><dd>{confirmedOrder.city_municipality || 'Not provided'}</dd></div></dl><h2>Purchased Items</h2><div className="receipt-items">{items.map((item, index) => <div key={`${item.name}-${index}`}><span>{item.name}<small>Qty: {item.quantity}</small></span><strong>{peso(item.line_total)}</strong></div>)}{items.length === 0 && <p>Item details are unavailable for this older order receipt.</p>}</div><dl className="receipt-totals"><div><dt>Merchandise</dt><dd>{peso(confirmedOrder.merchandise_subtotal)}</dd></div><div><dt>Shipping</dt><dd>{peso(confirmedOrder.shipping_fee)}</dd></div>{Number(confirmedOrder.cod_service_fee) > 0 && <div><dt>COD Fee</dt><dd>{peso(confirmedOrder.cod_service_fee)}</dd></div>}<div><dt>Amount Due Now</dt><dd>{peso(confirmedOrder.upfront_amount)}</dd></div>{Number(confirmedOrder.rider_collectible_amount) > 0 && <div><dt>Amount Due to Rider</dt><dd>{peso(confirmedOrder.rider_collectible_amount)}</dd></div>}<div className="receipt-total"><dt>Overall Order Value</dt><dd>{peso(confirmedOrder.overall_total)}</dd></div></dl><div className="receipt-status"><span>Current Order Status</span><strong>{titleCase(confirmedOrder.order_status || confirmedOrder.payment_status)}</strong></div><p className="receipt-track">Track your order: hydro-blasters-mnl.pages.dev/track-order</p></article><div className="receipt-actions"><button type="button" className="secondary-button" onClick={() => { if (!downloadReceipt(confirmedOrder)) setDownloadError('Receipt download is unavailable on this device.') }}>Download E-Receipt</button><button type="button" className="secondary-button" onClick={() => void copyReference()}>Copy Order Number</button><Link className="primary-button" href={`/track-order?order=${encodeURIComponent(confirmedOrder.order_reference)}`}>Track This Order</Link></div>{copied && <p className="receipt-feedback" role="status">Copied!</p>}{downloadError && <p className="receipt-feedback" role="alert">{downloadError}</p>}</section>
 }
