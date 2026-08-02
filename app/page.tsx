@@ -15,10 +15,12 @@ export default function Home() {
           <a href="/shop">Shop</a>
           <a href="#categories">Categories</a>
           <a href="/about">About</a>
+          <a href="/visit-showroom">Visit Showroom</a>
         </nav>
         <div className="header-actions">
           <a className="mobile-shop-link" href="/shop">Shop</a>
           <a className="mobile-about-link" href="/about">About</a>
+          <a className="mobile-visit-link" href="/visit-showroom">Visit</a>
           <button className="icon-button" type="button" aria-label="Search">⌕</button>
           <CartLink />
         </div>
