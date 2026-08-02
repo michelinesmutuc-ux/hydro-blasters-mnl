@@ -8,7 +8,7 @@ import { PaymentQr } from './PaymentQr'
 import { getPaymentOption } from '../lib/payment-config'
 
 const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
-const initial = { customer_name: '', mobile_number: '', house_unit: '', street: '', barangay: '', city_municipality: '', region: '', postal_code: '', order_notes: '' }
+const initial = { first_name: '', last_name: '', mobile_number: '', house_unit: '', street: '', barangay: '', city_municipality: '', region: '', postal_code: '', order_notes: '' }
 type PaymentMethod = 'gcash' | 'bank_transfer' | 'cash_on_delivery' | 'pay_upon_pickup'
 
 const paymentMethods: { id: PaymentMethod; name: string; description: string }[] = [
@@ -137,9 +137,11 @@ export function GuestCheckout() {
 
     setSaving(true)
     try {
+      const customerName = `${form.first_name.trim()} ${form.last_name.trim()}`.trim()
       const { data, error: invokeError } = await supabase.functions.invoke('create-guest-order', {
         body: {
           ...form,
+          customer_name: customerName,
           delivery_method: delivery,
           payment_method: payment,
           payment_option_name: getPaymentOption(payment, bankOptionId)?.name ?? null,
@@ -150,7 +152,7 @@ export function GuestCheckout() {
       })
       if (invokeError) throw invokeError
       if (data?.error) throw new Error(data.error)
-      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, customer_name: form.customer_name, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, quantity: line.quantity, line_total: Number(line.price) * line.quantity })) }))
+      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, customer_name: customerName, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, quantity: line.quantity, line_total: Number(line.price) * line.quantity })) }))
       sessionStorage.removeItem('hydro-order-attempt-key')
       clear()
       router.push('/order-confirmation')
@@ -172,7 +174,8 @@ export function GuestCheckout() {
       {error && <p className="checkout-error" role="alert">{error}</p>}
       <div className="checkout-fields">
         <section className="checkout-card"><h2>Customer Information</h2><div className="checkout-grid">
-          <label>Full Name <em>Required</em><input required value={form.customer_name} onChange={(event) => update('customer_name', event.target.value)} /></label>
+          <label>First Name (Given Name) <em>Required</em><input required autoComplete="given-name" value={form.first_name} onChange={(event) => update('first_name', event.target.value)} /></label>
+          <label>Last Name (Surname) <em>Required</em><input required autoComplete="family-name" value={form.last_name} onChange={(event) => update('last_name', event.target.value)} /></label>
           <label>Mobile Number <em>Required</em><input required value={form.mobile_number} onChange={(event) => update('mobile_number', event.target.value)} /></label>
         </div></section>
         <section className="checkout-card"><h2>Delivery</h2>
