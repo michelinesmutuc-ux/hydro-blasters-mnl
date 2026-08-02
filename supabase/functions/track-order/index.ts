@@ -3,6 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Content-Type': 'application/json' }
 const reply = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), { status, headers })
 const normalizeMobile = (value: string) => value.replace(/\D/g, '').replace(/^\+?63/, '0')
+const normalizeOrderReference = (value: string) => value.trim().replace(/^#\s*/, '').toUpperCase()
 const lastName = (name: string) => name.trim().split(/\s+/).at(-1)?.toLocaleLowerCase() ?? ''
 const safeOrderFields = 'id,order_reference,customer_name,mobile_number,city_municipality,delivery_method,payment_method,merchandise_subtotal,shipping_fee,cod_service_fee,upfront_amount,rider_collectible_amount,overall_total,payment_status,order_status,created_at'
 
@@ -14,20 +15,20 @@ Deno.serve(async (request) => {
     const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
     let orders: Record<string, unknown>[] = []
     if (mode === 'reference') {
-      const reference = String(orderNumber ?? '').trim().toUpperCase()
-      if (!/^HBMNL-[A-Z0-9-]{6,}$/.test(reference)) return reply({ error: 'No matching order found. Please check the information and try again.' }, 404)
+      const reference = normalizeOrderReference(String(orderNumber ?? ''))
+      if (!/^HBMNL-[A-Z0-9-]{6,}$/.test(reference)) return reply({ error: 'No matching order found.' }, 404)
       const { data, error } = await admin.from('orders').select(safeOrderFields).eq('order_reference', reference).limit(1)
       if (error) throw error
       orders = data ?? []
     } else if (mode === 'customer') {
       const normalizedSurname = String(surname ?? '').trim().toLocaleLowerCase()
       const normalizedMobile = normalizeMobile(String(mobileNumber ?? ''))
-      if (!normalizedSurname || !/^0\d{10}$/.test(normalizedMobile)) return reply({ error: 'No matching order found. Please check the information and try again.' }, 404)
+      if (!normalizedSurname || !/^0\d{10}$/.test(normalizedMobile)) return reply({ error: 'No matching order found.' }, 404)
       const { data, error } = await admin.from('orders').select(safeOrderFields).order('created_at', { ascending: false }).limit(100)
       if (error) throw error
       orders = (data ?? []).filter((order) => lastName(String(order.customer_name)) === normalizedSurname && normalizeMobile(String(order.mobile_number)) === normalizedMobile)
-    } else return reply({ error: 'No matching order found. Please check the information and try again.' }, 404)
-    if (!orders.length) return reply({ error: 'No matching order found. Please check the information and try again.' }, 404)
+    } else return reply({ error: 'No matching order found.' }, 404)
+    if (!orders.length) return reply({ error: 'No matching order found.' }, 404)
     if (mode === 'customer' && orders.length > 1) return reply({ orders: orders.map(({ id, order_reference, created_at, order_status, overall_total }) => ({ id, order_reference, created_at, order_status, overall_total })) })
     const order = orders[0]
     const { data: items, error: itemError } = await admin.from('order_items').select('product_name,quantity,line_total').eq('order_id', order.id)
