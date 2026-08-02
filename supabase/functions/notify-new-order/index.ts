@@ -77,10 +77,17 @@ const sendTelegramPhoto = (photo: string, caption: string) => sendTelegramReques
 })
 
 function getNotificationHeading(paymentMethod: string) {
-  if (paymentMethod === 'gcash') return '🔵 <b>PAYMENT PROOF RECEIVED</b>'
-  if (paymentMethod === 'bank_transfer') return '🏦 <b>PAYMENT PROOF RECEIVED</b>'
-  if (paymentMethod === 'cash_on_delivery') return '🚚 <b>COD PAYMENT RECEIVED</b>'
+  if (paymentMethod === 'gcash') return '🔵 <b>GCASH PAYMENT RECEIVED</b>'
+  if (paymentMethod === 'bank_transfer') return '🏦 <b>BANK TRANSFER RECEIVED</b>'
+  if (paymentMethod === 'cash_on_delivery') return '🚚 <b>COD SHIPPING PAYMENT RECEIVED</b>'
   return '🏠 <b>NEW SHOWROOM ORDER</b>'
+}
+
+function getPaymentCaptionLabel(paymentMethod: string) {
+  if (paymentMethod === 'gcash') return '🔵 <b>Payment</b>'
+  if (paymentMethod === 'bank_transfer') return '🏦 <b>Payment</b>'
+  if (paymentMethod === 'cash_on_delivery') return '🚚 <b>Payment</b>'
+  return '💳 <b>Payment</b>'
 }
 
 Deno.serve(async (request) => {
@@ -161,7 +168,8 @@ Deno.serve(async (request) => {
       ? `${readable(order.payment_method)} (${escapeTelegramHtml(order.selected_payment_option_name)})`
       : readable(order.payment_method)
     const notificationHeading = getNotificationHeading(order.payment_method)
-    const caption = `${notificationHeading}\n\n👤 <b>Customer</b>\n${escapeTelegramHtml(order.customer_name)}\n\n🧾 <b>Order</b>\n${escapeTelegramHtml(order.order_reference)}\n\n💳 <b>Payment</b>\n${paymentLine}\n\n💰 <b>Amount Due Now</b>\n${peso(order.upfront_amount)}\n\n📦 <b>Order Value</b>\n${peso(order.overall_total)}\n\n⏳ <b>Status</b>\n${readable(order.payment_status)}`
+    const paymentCaptionLabel = getPaymentCaptionLabel(order.payment_method)
+    const caption = `${notificationHeading}\n\n👤 <b>Customer</b>\n${escapeTelegramHtml(order.customer_name)}\n\n🧾 <b>Order</b>\n${escapeTelegramHtml(order.order_reference)}\n\n${paymentCaptionLabel}\n${paymentLine}\n\n💰 <b>Amount Due Now</b>\n${peso(order.upfront_amount)}\n\n📦 <b>Order Value</b>\n${peso(order.overall_total)}\n\n⏳ <b>Status</b>\n${readable(order.payment_status)}`
     const message = `${notificationHeading}\n\n<b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n<b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n<b>Items</b>\n${itemLines}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\nReview this order in Admin Orders.`
 
     let telegram
