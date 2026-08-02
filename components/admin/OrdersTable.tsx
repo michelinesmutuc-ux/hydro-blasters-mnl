@@ -24,6 +24,8 @@ type Order = {
   telegram_notification_attempted_at: string | null
   telegram_notification_sent_at: string | null
   telegram_notification_error: string | null
+  is_test_order: boolean
+  archived_at: string | null
   created_at: string
   order_notes: string | null
 }
@@ -81,13 +83,21 @@ export function OrdersTable() {
   const [error, setError] = useState<string | null>(null)
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null)
   const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null)
+  const [orderFilter, setOrderFilter] = useState<'active' | 'archived' | 'test'>('active')
+  const [deleteTarget, setDeleteTarget] = useState<Order | null>(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null)
   const [proofDiagnostics, setProofDiagnostics] = useState<Record<string, ProofDiagnostic>>({})
 
   async function load() {
-    const { data, error: loadError } = await supabase
+    let query = supabase
       .from('orders')
-      .select('id,order_reference,customer_name,mobile_number,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,payment_status,order_status,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,created_at,order_notes')
+      .select('id,order_reference,customer_name,mobile_number,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,payment_status,order_status,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,is_test_order,archived_at,created_at,order_notes')
       .order('created_at', { ascending: false })
+    if (orderFilter === 'active') query = query.is('archived_at', null)
+    if (orderFilter === 'archived') query = query.not('archived_at', 'is', null)
+    if (orderFilter === 'test') query = query.eq('is_test_order', true)
+    const { data, error: loadError } = await query
     if (loadError) {
       setError(loadError.message)
       return
@@ -97,7 +107,7 @@ export function OrdersTable() {
     setOrders(rows)
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => { void load() }, [orderFilter])
 
   async function proof(order: Order) {
     const storedPath = order.payment_proof_path?.trim() ?? ''
@@ -267,8 +277,60 @@ export function OrdersTable() {
     }
   }
 
+  async function setOrderFlag(order: Order, changes: Partial<Pick<Order, 'is_test_order' | 'archived_at'>>) {
+    setError(null)
+    try {
+      await requireAdminSession()
+      const { error: updateError } = await supabase.from('orders').update({ ...changes, updated_at: new Date().toISOString() }).eq('id', order.id)
+      if (updateError) throw updateError
+      await load()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Order could not be updated.')
+    }
+  }
+
+  async function deleteTestOrder() {
+    if (!deleteTarget || deleteConfirmation !== 'DELETE') return
+    setError(null)
+    setDeletingOrderId(deleteTarget.id)
+    try {
+      await requireAdminSession()
+      const { data: currentOrder, error: orderError } = await supabase
+        .from('orders')
+        .select('id,order_reference,is_test_order,payment_proof_path')
+        .eq('id', deleteTarget.id)
+        .single()
+      if (orderError || !currentOrder) throw new Error('The test order could not be loaded.')
+      if (!currentOrder.is_test_order) throw new Error('Only orders explicitly marked as test orders can be deleted.')
+
+      const { error: itemLoadError } = await supabase.from('order_items').select('id,product_id,quantity').eq('order_id', currentOrder.id)
+      if (itemLoadError) throw itemLoadError
+
+      let proofWarning: string | null = null
+      if (currentOrder.payment_proof_path && isValidStoredProofPath(currentOrder.payment_proof_path)) {
+        const { error: proofDeleteError } = await supabase.storage.from('payment-proofs').remove([currentOrder.payment_proof_path])
+        if (proofDeleteError) proofWarning = `Payment proof could not be removed: ${proofDeleteError.message}`
+      }
+
+      const { error: itemsDeleteError } = await supabase.from('order_items').delete().eq('order_id', currentOrder.id)
+      if (itemsDeleteError) throw itemsDeleteError
+      const { error: deleteError } = await supabase.from('orders').delete().eq('id', currentOrder.id).eq('is_test_order', true)
+      if (deleteError) throw deleteError
+
+      setDeleteTarget(null)
+      setDeleteConfirmation('')
+      setTelegramFeedback(proofWarning ? `Test order deleted. ${proofWarning}` : 'Test order permanently deleted.')
+      await load()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Test order could not be deleted.')
+    } finally {
+      setDeletingOrderId(null)
+    }
+  }
+
   return <section className={styles.panel}>
     <div className={styles.panelHeader}><h2>Orders</h2><span>{orders.length} orders</span></div>
+    <div className={styles.tableActions}><button className={styles.tableAction} type="button" onClick={() => setOrderFilter('active')}>Active</button><button className={styles.tableAction} type="button" onClick={() => setOrderFilter('archived')}>View Archived Orders</button><button className={styles.tableAction} type="button" onClick={() => setOrderFilter('test')}>Test Orders</button></div>
     {error && <p className={styles.errorMessage}>{error}</p>}
     {telegramFeedback && <p className={styles.status}>{telegramFeedback}</p>}
     <div className={styles.tableWrap}><table className={styles.table}>
@@ -288,10 +350,13 @@ export function OrdersTable() {
           <span className={styles.status}>Telegram {order.telegram_notification_status}</span>
           <span className={styles.status}>Type {order.telegram_notification_type ?? 'not recorded'}</span>
           <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" disabled={retryingOrderId === order.id} onClick={() => void resendTelegram(order)}>{retryingOrderId === order.id ? 'Resending…' : 'Resend Telegram Notification'}</button>
+          {order.is_test_order ? <><span className={styles.status}>Test Order</span><button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" onClick={() => void setOrderFlag(order, { is_test_order: false })}>Remove Test Order Mark</button><button className={`${styles.tableAction} ${styles.deleteAction} ${styles.retryNotificationAction}`} type="button" onClick={() => { setDeleteConfirmation(''); setDeleteTarget(order) }}>Delete Test Order Permanently</button></> : <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" onClick={() => void setOrderFlag(order, { is_test_order: true })}>Mark as Test Order</button>}
+          {order.archived_at ? <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" onClick={() => void setOrderFlag(order, { archived_at: null })}>Restore Order</button> : !order.is_test_order && <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" onClick={() => void setOrderFlag(order, { archived_at: new Date().toISOString() })}>Archive Order</button>}
         </td>
         <td><button className={`${styles.tableAction} ${styles.proofAction}`} type="button" onClick={() => void proof(order)}>View Payment Proof</button>{proofDiagnostic && <details className={styles.proofDiagnostic}><summary>Proof diagnostics</summary><dl><div><dt>Stored path</dt><dd>{proofDiagnostic.storedPath || 'None'}</dd></div><div><dt>Bucket</dt><dd>{proofDiagnostic.bucket}</dd></div><div><dt>Lookup paths</dt><dd>{proofDiagnostic.lookupPaths.join(' · ') || 'None'}</dd></div><div><dt>Object exists</dt><dd>{proofDiagnostic.objectExists ? 'Yes' : 'No'}</dd></div><div><dt>Matching objects</dt><dd>{proofDiagnostic.matchingObjects.join(' · ') || 'None found'}</dd></div><div><dt>Storage error</dt><dd>{proofDiagnostic.storageError || 'None'}</dd></div><div><dt>Authenticated user</dt><dd>{proofDiagnostic.authenticatedUserId || 'No session'}</dd></div><div><dt>Admin role</dt><dd>{proofDiagnostic.appMetadataRole || 'Missing'}</dd></div><div><dt>Signed URL</dt><dd>{proofDiagnostic.signedUrl ? <a href={proofDiagnostic.signedUrl} target="_blank" rel="noreferrer">Open secure proof link</a> : 'Not generated'}</dd></div><div><dt>Result</dt><dd>{proofDiagnostic.message}</dd></div></dl></details>}</td>
       </tr>
       })}</tbody>
     </table></div>
+    {deleteTarget && <div className={styles.confirmOverlay} role="dialog" aria-modal="true" aria-labelledby="delete-test-order-title"><div className={styles.confirmDialog}><h3 id="delete-test-order-title">Delete test order permanently?</h3><p><strong>{deleteTarget.order_reference}</strong> — {deleteTarget.customer_name}</p><p>This cannot be undone. Its order items and saved payment proof will be removed. Inventory is not restored because this website does not deduct inventory when an order is placed.</p><label>Type DELETE to continue<input autoFocus value={deleteConfirmation} onChange={(event) => setDeleteConfirmation(event.target.value)} /></label><div className={styles.tableActions}><button className={styles.tableAction} type="button" onClick={() => { setDeleteTarget(null); setDeleteConfirmation('') }}>Cancel</button><button className={`${styles.tableAction} ${styles.deleteAction}`} type="button" disabled={deleteConfirmation !== 'DELETE' || deletingOrderId === deleteTarget.id} onClick={() => void deleteTestOrder()}>{deletingOrderId === deleteTarget.id ? 'Deleting…' : 'Delete Test Order Permanently'}</button></div></div></div>}
   </section>
 }
