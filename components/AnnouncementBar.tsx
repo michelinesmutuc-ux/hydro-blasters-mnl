@@ -9,9 +9,8 @@ export function AnnouncementBar() {
     >
       <span className="announcement-status" aria-hidden="true" />
       <span className="announcement-content">
-        <span className="announcement-location">📍 PASAY CITY</span>
-        <span className="announcement-separator" aria-hidden="true">•</span>
-        <span className="announcement-appointment">SHOWROOM VISITS ARE BY APPOINTMENT ONLY</span>
+        <span className="announcement-desktop">📍 PASAY CITY <span aria-hidden="true">•</span> SHOWROOM VISITS ARE BY APPOINTMENT ONLY</span>
+        <span className="announcement-mobile">📍 PASAY CITY <span aria-hidden="true">•</span> APPOINTMENT ONLY</span>
       </span>
     </Link>
   )
