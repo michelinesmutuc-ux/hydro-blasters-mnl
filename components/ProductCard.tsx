@@ -6,6 +6,7 @@ import { ProductImageFrame } from './ProductImageFrame'
 import { getProductUrl } from '../lib/products/get-product-url'
 import { AddToCartButton } from './AddToCartButton'
 import { CompareButton } from './CompareButton'
+import type { GelBlasterType } from '../lib/products/product-types'
 
 export type HomepageHighlightType = 'new_arrival' | 'featured' | 'best_seller' | 'clearance_sale' | 'limited_stock'
 
@@ -15,6 +16,7 @@ export type PublicProduct = {
   slug: string
   brand: string | null
   category: string
+  product_type?: GelBlasterType | null
   price: number | string
   stock: number
   status: 'draft' | 'in_stock' | 'out_of_stock' | 'preorder'

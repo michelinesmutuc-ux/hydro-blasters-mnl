@@ -9,6 +9,7 @@ import { fetchProductSpecifications, normalizeSpecificationRows, replaceProductS
 import { fetchProductVariants, replaceProductVariants, validateVariants, type VariantDraft } from '../../lib/supabase/product-variants'
 import { markCatalogueWriteComplete, markCatalogueWritePending, markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
+import { GEL_BLASTER_TYPES, isGelBlasterCategory, isGelBlasterType, parseGelBlasterType, type GelBlasterType } from '../../lib/products/product-types'
 import { ProductImageUploader } from './ProductImageUploader'
 import styles from './admin.module.css'
 
@@ -40,7 +41,7 @@ function slugify(value: string) {
 }
 
 function initialValues() {
-  return { name: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shippingClassification: 'standard', shortDescription: '', description: '', featured: false, isActive: false, hasVariants: false, variantGroupName: '', showOnHomepage: false, highlightType: 'none' as HighlightType, homepageSortOrder: '' }
+  return { name: '', brand: '', category: '', productType: '' as GelBlasterType | '', price: '0', stock: '0', status: 'draft', shippingClassification: 'standard', shortDescription: '', description: '', featured: false, isActive: false, hasVariants: false, variantGroupName: '', showOnHomepage: false, highlightType: 'none' as HighlightType, homepageSortOrder: '' }
 }
 
 function newSpecificationRow(): SpecificationRow {
@@ -93,6 +94,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         name: duplicateName,
         brand: data.brand ?? '',
         category: data.category,
+        productType: parseGelBlasterType(data.product_type),
         price: String(data.price),
         stock: mode === 'add' ? '0' : String(data.stock),
         status: data.status,
@@ -149,6 +151,14 @@ export function ProductForm({ mode }: ProductFormProps) {
 
   function update<K extends keyof ProductDraft>(key: K, value: ProductDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }))
+  }
+
+  function updateCategory(category: string) {
+    setDraft((current) => ({
+      ...current,
+      category,
+      productType: isGelBlasterCategory(category) ? current.productType : '',
+    }))
   }
 
   function handleNameChange(name: string) {
@@ -286,6 +296,10 @@ export function ProductForm({ mode }: ProductFormProps) {
       setError('Enter a Variant Group Name, such as Color or Package.')
       return
     }
+    if (mode === 'add' && isGelBlasterCategory(draft.category) && !isGelBlasterType(draft.productType)) {
+      setError('Please select a Gel Blaster type.')
+      return
+    }
     const effectivePrice = draft.hasVariants ? Math.min(...validatedVariants.map((variant) => Number(variant.price))) : price
     const effectiveStock = draft.hasVariants ? validatedVariants.reduce((total, variant) => total + Number(variant.stock), 0) : stock
     const homepageSortOrder = draft.homepageSortOrder.trim() === '' ? null : Number(draft.homepageSortOrder)
@@ -318,6 +332,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         name: draft.name.trim(),
         brand: draft.brand.trim() || null,
         category: draft.category,
+        product_type: isGelBlasterCategory(draft.category) && isGelBlasterType(draft.productType) ? draft.productType : null,
         price: effectivePrice,
         stock: effectiveStock,
         status: draft.status,
@@ -340,7 +355,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         const { data, error: insertError } = await supabase
           .from('products')
           .insert({ ...productPayload, slug: createdSlug })
-          .select('id,name,slug,brand,category,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+          .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
           .single()
         if (insertError || !data) {
           console.error('[Hydro Blasters MNL] products insert failed:', insertError)
@@ -362,7 +377,7 @@ export function ProductForm({ mode }: ProductFormProps) {
             .from('products')
             .update({ image_urls: uploadedImageUrls, updated_at: new Date().toISOString() })
             .eq('id', data.id)
-            .select('id,name,slug,brand,category,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+            .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
             .single()
           if (imageUpdateError || !imageUpdatedProduct) throw imageUpdateError ?? new Error('Product saved, but its image URLs could not be saved.')
           savedProduct = imageUpdatedProduct
@@ -401,6 +416,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         name: draft.name.trim(),
         brand: draft.brand.trim() || null,
         category: draft.category,
+        product_type: isGelBlasterCategory(draft.category) && isGelBlasterType(draft.productType) ? draft.productType : null,
         price: effectivePrice,
         stock: effectiveStock,
         status: draft.status,
@@ -424,7 +440,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         .from('products')
         .update(updatePayload)
         .eq('id', productId as string)
-        .select('id,name,slug,brand,category,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+        .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
         .single()
       if (updateError) throw updateError
       console.log('Returned Supabase row:', data)
@@ -478,7 +494,8 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={styles.field}><label htmlFor="product-name">Product Name</label><input id="product-name" required value={draft.name} onChange={(event) => handleNameChange(event.target.value)} placeholder="Enter product name" /></div>
           {mode === 'add' && <div className={styles.field}><label htmlFor="product-slug">Slug</label><input id="product-slug" required value={newProductSlug} onChange={(event) => { setNewProductSlugEdited(true); setNewProductSlug(event.target.value) }} placeholder="product-slug" /><span className={styles.slugHint}>{duplicateSourceId ? 'Temporary slug generated from the duplicate name. It becomes permanent after the first save.' : 'Generated from the product name. You can edit it before saving.'}</span></div>}
           <div className={styles.field}><label htmlFor="brand">Brand</label><input id="brand" value={draft.brand} onChange={(event) => update('brand', event.target.value)} placeholder="Brand name" /></div>
-          <div className={styles.field}><label htmlFor="category">Category</label><select id="category" required value={draft.category} onChange={(event) => update('category', event.target.value)}><option value="" disabled>Select a category</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
+          <div className={styles.field}><label htmlFor="category">Category</label><select id="category" required value={draft.category} onChange={(event) => updateCategory(event.target.value)}><option value="" disabled>Select a category</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
+          {isGelBlasterCategory(draft.category) && <div className={styles.field}><label htmlFor="product-type">Type</label><select id="product-type" value={draft.productType} onChange={(event) => update('productType', event.target.value as GelBlasterType | '')}><option value="">Select Type</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{productType}</option>)}</select><span className={styles.slugHint}>{mode === 'add' ? 'Required for new Gel Blaster products.' : 'Optional for existing products until you classify them.'}</span></div>}
           <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={draft.price} disabled={draft.hasVariants} onChange={(event) => update('price', event.target.value)} />{draft.hasVariants && <span className={styles.slugHint}>Calculated from the lowest variant price.</span>}</div>
           <div className={styles.field}><label htmlFor="stock">Stock</label><input id="stock" required min="0" step="1" type="number" value={draft.stock} disabled={draft.hasVariants} onChange={(event) => update('stock', event.target.value)} />{draft.hasVariants && <span className={styles.slugHint}>Calculated from total variant stock.</span>}</div>
           <div className={styles.field}><label htmlFor="status">Status</label><select id="status" value={draft.status} onChange={(event) => update('status', event.target.value)}>{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></div>

@@ -5,6 +5,7 @@ import { fetchActiveProducts } from '../lib/supabase/products'
 import { ProductCard, type PublicProduct } from './ProductCard'
 import { getProductUrl } from '../lib/products/get-product-url'
 import { ShopFloatingCheckout } from './ShopFloatingCheckout'
+import { GEL_BLASTER_TYPES, gelBlasterTypeFilterLabels, isGelBlasterCategory, parseGelBlasterType, type GelBlasterType } from '../lib/products/product-types'
 
 type SortOption = 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'name-asc'
 type ShopProduct = PublicProduct & {
@@ -16,6 +17,7 @@ type ShopProduct = PublicProduct & {
 type ShopFilters = {
   search: string
   category: string
+  productType: GelBlasterType | ''
   brand: string
   status: string
   sort: SortOption
@@ -25,9 +27,12 @@ function filtersFromUrl(): ShopFilters {
   const params = new URLSearchParams(window.location.search)
   const sort = params.get('sort')
   const validSort: SortOption[] = ['featured', 'newest', 'price-asc', 'price-desc', 'name-asc']
+  const category = params.get('category') ?? ''
+  const productType = params.get('type') ?? ''
   return {
     search: params.get('search') ?? '',
-    category: params.get('category') ?? '',
+    category,
+    productType: isGelBlasterCategory(category) ? parseGelBlasterType(productType) : '',
     brand: params.get('brand') ?? '',
     status: params.get('status') ?? '',
     sort: validSort.includes(sort as SortOption) ? sort as SortOption : 'featured',
@@ -38,6 +43,7 @@ function updateShopUrl(filters: ShopFilters) {
   const params = new URLSearchParams()
   if (filters.search) params.set('search', filters.search)
   if (filters.category) params.set('category', filters.category)
+  if (filters.category && isGelBlasterCategory(filters.category) && filters.productType) params.set('type', filters.productType.toLocaleLowerCase())
   if (filters.brand) params.set('brand', filters.brand)
   if (filters.status) params.set('status', filters.status)
   if (filters.sort !== 'featured') params.set('sort', filters.sort)
@@ -49,7 +55,7 @@ export function ShopProducts() {
   const [products, setProducts] = useState<ShopProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filters, setFilters] = useState<ShopFilters>({ search: '', category: '', brand: '', status: '', sort: 'featured' })
+  const [filters, setFilters] = useState<ShopFilters>({ search: '', category: '', productType: '', brand: '', status: '', sort: 'featured' })
   const [urlReady, setUrlReady] = useState(false)
 
   useEffect(() => {
@@ -97,8 +103,8 @@ export function ShopProducts() {
   const matchingProducts = useMemo(() => {
     const query = filters.search.trim().toLocaleLowerCase()
     const filtered = products.filter((product) => {
-      const matchesSearch = !query || [product.name, product.brand ?? '', product.category, product.short_description ?? ''].some((value) => value.toLocaleLowerCase().includes(query))
-      return matchesSearch && (!filters.category || product.category === filters.category) && (!filters.brand || product.brand === filters.brand) && (!filters.status || product.status === filters.status)
+      const matchesSearch = !query || [product.name, product.brand ?? '', product.category, product.product_type ?? '', product.short_description ?? ''].some((value) => value.toLocaleLowerCase().includes(query))
+      return matchesSearch && (!filters.category || product.category === filters.category) && (!filters.productType || product.product_type === filters.productType) && (!filters.brand || product.brand === filters.brand) && (!filters.status || product.status === filters.status)
     })
 
     return [...filtered].sort((first, second) => {
@@ -114,8 +120,12 @@ export function ShopProducts() {
     setFilters((current) => ({ ...current, [field]: value }))
   }
 
+  function updateCategory(category: string) {
+    setFilters((current) => ({ ...current, category, productType: isGelBlasterCategory(category) ? current.productType : '' }))
+  }
+
   function clearAllFilters() {
-    setFilters({ search: '', category: '', brand: '', status: '', sort: 'featured' })
+    setFilters({ search: '', category: '', productType: '', brand: '', status: '', sort: 'featured' })
   }
 
   if (loading) return <div className="catalogue-state">Loading products…</div>
@@ -126,7 +136,8 @@ export function ShopProducts() {
     <div className="shop-controls" aria-label="Product search and filters">
       <div className="shop-search"><label htmlFor="product-search">Search products</label><div><input id="product-search" type="search" value={filters.search} onChange={(event) => updateFilter('search', event.target.value)} placeholder="Search name, brand, category…" />{filters.search && <button type="button" onClick={() => updateFilter('search', '')}>Clear search</button>}</div></div>
       <div className="shop-filter-grid">
-        <label>Category<select value={filters.category} onChange={(event) => updateFilter('category', event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+        <label>Category<select value={filters.category} onChange={(event) => updateCategory(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+        {isGelBlasterCategory(filters.category) && <label>Type<select value={filters.productType} onChange={(event) => updateFilter('productType', event.target.value as GelBlasterType | '')}><option value="">All</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select></label>}
         <label>Brand<select value={filters.brand} onChange={(event) => updateFilter('brand', event.target.value)}><option value="">All brands</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select></label>
         <label>Status<select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}><option value="">All statuses</option>{statuses.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select></label>
         <label>Sort<select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as SortOption)}><option value="featured">Featured first</option><option value="newest">Newest</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="name-asc">Name: A to Z</option></select></label>
