@@ -205,6 +205,20 @@ export function ProductForm({ mode }: ProductFormProps) {
     })
   }
 
+  function removeVariantRow(id: string) {
+    // Variant rows are the source of truth for validation and the save payload.
+    // Remove the object itself; never leave an empty placeholder behind.
+    const nextRows = variantRows.filter((variant) => variant.id !== id)
+    setVariantRows(nextRows)
+
+    // An empty option list cannot be a variant product. Turning the feature off
+    // makes a duplicate/new product immediately valid as a normal product and,
+    // on save, causes existing saved variant rows to be removed as well.
+    if (nextRows.length === 0) {
+      setDraft((current) => ({ ...current, hasVariants: false, variantGroupName: '' }))
+    }
+  }
+
   async function prepareVariantImages(savedProductId: string, rows: VariantDraft[]) {
     const rowsWithNewImages = rows.filter((row) => row.image_file)
     if (rowsWithNewImages.length === 0) return rows
@@ -527,7 +541,7 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={styles.field}><label htmlFor={`variant-stock-${row.id}`}>Stock</label><input id={`variant-stock-${row.id}`} type="number" min="0" step="1" value={row.stock} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, stock: event.target.value } : variant))} disabled={isSaving} /></div>
           <div className={styles.field}><label htmlFor={`variant-sku-${row.id}`}>SKU (optional)</label><input id={`variant-sku-${row.id}`} value={row.sku ?? ''} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, sku: event.target.value } : variant))} disabled={isSaving} /></div>
           <div className={`${styles.field} ${styles.variantImageField}`}><span className={styles.fieldLegend}>Variant Image (optional)</span><ProductImageUploader files={row.image_file ? [row.image_file] : []} onFilesChange={(files) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, image_file: files[0] ?? null, image_url: files[0] ? null : variant.image_url } : variant))} existingImageUrls={row.image_url ? [row.image_url] : []} onExistingImageUrlsChange={() => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, image_url: null, image_file: null } : variant))} disabled={isSaving} progress={null} maxFiles={1} uploadTitle="Drop a variant image here or choose a file" uploadHint="Optional JPG, PNG, or WebP. This replaces only the main product image when selected." previewLabel={`variant ${row.name || index + 1}`} /></div>
-          <div className={styles.specificationActions}><button type="button" className={styles.rowAction} onClick={() => moveVariantRow(index, -1)} disabled={isSaving || index === 0}>Move up</button><button type="button" className={styles.rowAction} onClick={() => moveVariantRow(index, 1)} disabled={isSaving || index === variantRows.length - 1}>Move down</button><button type="button" className={`${styles.rowAction} ${styles.rowDelete}`} onClick={() => setVariantRows((current) => current.filter((variant) => variant.id !== row.id))} disabled={isSaving}>Remove Variant {index + 1}</button></div>
+          <div className={styles.specificationActions}><button type="button" className={styles.rowAction} onClick={() => moveVariantRow(index, -1)} disabled={isSaving || index === 0}>Move up</button><button type="button" className={styles.rowAction} onClick={() => moveVariantRow(index, 1)} disabled={isSaving || index === variantRows.length - 1}>Move down</button><button type="button" className={`${styles.rowAction} ${styles.rowDelete}`} onClick={() => removeVariantRow(row.id)} disabled={isSaving}>Remove</button></div>
         </div>)}</div>}
       </section>}
       <section className={styles.formSection}>
