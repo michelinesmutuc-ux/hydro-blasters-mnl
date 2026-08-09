@@ -498,7 +498,7 @@ export function ProductForm({ mode }: ProductFormProps) {
             <div className={styles.field}><label htmlFor="homepage-sort-order">Homepage Display Order</label><input id="homepage-sort-order" type="number" step="1" value={draft.homepageSortOrder} onChange={(event) => update('homepageSortOrder', event.target.value)} placeholder="Optional — lower numbers appear first" /><span className={styles.slugHint}>If left blank, products are ordered by name.</span></div>
           </div>}
           <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="short-description">Short Description</label><textarea id="short-description" value={draft.shortDescription} onChange={(event) => update('shortDescription', event.target.value)} placeholder="Short product description" /></div>
-          <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="description">Full Description</label><textarea id="description" value={draft.description} onChange={(event) => update('description', event.target.value)} placeholder="Full product description" /></div>
+          <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="description">Package Inclusions</label><textarea id="description" value={draft.description} onChange={(event) => update('description', event.target.value)} placeholder="List everything included with this product/package." /><span className={styles.slugHint}>List everything included with this product/package.</span></div>
         </div>
       </section>
       {draft.hasVariants && <section className={styles.formSection}>

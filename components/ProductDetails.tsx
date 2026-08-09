@@ -109,7 +109,7 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
   const firstImage = product.image_urls?.[0] ?? null
   const mainImage = selectedVariantImage ?? product.image_urls?.[selectedImage] ?? firstImage
   const productImages = product.image_urls ?? []
-  const descriptionParagraphs = product.description?.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean) ?? []
+  const inclusionParagraphs = product.description?.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean) ?? []
 
   return (
     <section className="section product-detail">
@@ -128,7 +128,7 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
           <CompareButton product={{ ...product, image_urls: product.image_urls ?? [] }} />
           <dl className="product-detail-meta"><div><dt>Stock</dt><dd>{product.has_variants ? `${product.stock} across variants` : product.stock}</dd></div><div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div></dl>
           {product.short_description && <p className="product-short-description">{product.short_description}</p>}
-          {descriptionParagraphs.length > 0 && <div className="product-description"><h2>Description</h2>{descriptionParagraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
+          {inclusionParagraphs.length > 0 && <div className="product-description"><h2>Package Inclusions</h2>{inclusionParagraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
           <ProductHelpCallout specifications={specificationRows} />
         </div>
       </div>
