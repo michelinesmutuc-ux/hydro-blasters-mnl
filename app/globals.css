@@ -103,3 +103,5 @@ footer { padding:34px 20px 42px; border-top:1px solid var(--line); }.footer-bran
 /* The specification table balances the desktop gallery column; mobile remains purchase-first. */
 @media(max-width:819px){.product-gallery{display:contents}.product-image-frame-main,.product-thumbnails{order:1}.product-detail-copy{order:2}.product-specifications{order:3}}
 @media(min-width:820px){.product-gallery{display:block}.product-gallery .product-specifications{margin-top:30px}.product-detail-copy .product-help-callout{margin-top:34px}}
+
+.specification-boolean{display:inline-flex;align-items:center;gap:7px}.specification-boolean>span{font-size:14px;font-weight:900;line-height:1}.specification-boolean-yes>span{color:var(--cyan)}.specification-boolean-no>span{color:#938da8}

@@ -39,6 +39,13 @@ function peso(value: number | string) {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value))
 }
 
+function SpecificationValue({ value }: { value: string }) {
+  const normalizedValue = value.trim().toLocaleLowerCase()
+  if (normalizedValue === 'yes') return <span className="specification-boolean specification-boolean-yes"><span aria-hidden="true">✓</span>Yes</span>
+  if (normalizedValue === 'no') return <span className="specification-boolean specification-boolean-no"><span aria-hidden="true">✕</span>No</span>
+  return <>{value}</>
+}
+
 function ProductUnavailable() {
   return <section className="section product-unavailable"><p className="eyebrow">Product unavailable</p><h1>This product is not available</h1><p>The product may no longer exist or is not currently active.</p><a className="primary-button" href="/shop">Return to shop</a></section>
 }
@@ -118,7 +125,7 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
         <div className="product-gallery">
           <ProductImageFrame src={mainImage} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="main" />
           {productImages.length > 1 && <div className="product-thumbnails" aria-label="Product images">{productImages.map((imageUrl, index) => <button className={`${stylesForThumbnail(!selectedVariantImage && index === selectedImage)}`} type="button" key={imageUrl} onClick={() => { setSelectedVariantImage(null); setSelectedImage(index) }} aria-label={`Show image ${index + 1} of ${product.name}`} aria-pressed={!selectedVariantImage && index === selectedImage}><ProductImageFrame src={imageUrl} alt="" fallbackLabel={`Image ${index + 1}`} variant="thumbnail" /></button>)}</div>}
-          {specificationRows.length > 0 && <section className="product-specifications"><h2>Specifications</h2><dl>{specificationRows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl></section>}
+          {specificationRows.length > 0 && <section className="product-specifications"><h2>Specifications</h2><dl>{specificationRows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd><SpecificationValue value={row.value} /></dd></div>)}</dl></section>}
         </div>
         <div className="product-detail-copy">
           {product.brand && <Link className="product-brand" href={`/shop?brand=${encodeURIComponent(product.brand)}`}><span>Brand</span><strong>{product.brand}</strong></Link>}
