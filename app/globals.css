@@ -96,3 +96,6 @@ footer { padding:34px 20px 42px; border-top:1px solid var(--line); }.footer-bran
 
 /* Product prices are deliberately distinct from neutral product metadata. */
 .product-price,.product-variant-price,.product-price-value{color:#ff5d73!important;font-weight:800}.product-price-value{letter-spacing:.01em}.product-meta .product-price-value{font-size:13px}.compare-product-header .product-price-value{color:#ff5d73!important}
+
+/* Brand is a first-scan product fact, not hidden among the secondary metadata. */
+.product-brand{display:inline-grid;gap:3px;margin:3px 0 13px;color:var(--cyan);text-decoration:none}.product-brand span{color:var(--muted);font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}.product-brand strong{font-size:15px;font-weight:800;letter-spacing:.07em;text-transform:uppercase}.product-brand:hover,.product-brand:focus-visible{color:var(--white);outline:2px solid var(--purple);outline-offset:4px}.product-detail-meta{grid-template-columns:1fr 1fr}

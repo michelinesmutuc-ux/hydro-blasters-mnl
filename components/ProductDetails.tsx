@@ -121,11 +121,12 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
         </div>
         <div className="product-detail-copy">
           <p className="eyebrow">{product.category}</p>
+          {product.brand && <Link className="product-brand" href={`/shop?brand=${encodeURIComponent(product.brand)}`}><span>Brand</span><strong>{product.brand}</strong></Link>}
           <h1>{product.name}</h1>
           {!product.has_variants && <p className="product-price">{peso(product.price)}</p>}
           <ProductPurchaseActions product={product} variants={variantRows} onVariantImageChange={setSelectedVariantImage} />
           <CompareButton product={{ ...product, image_urls: product.image_urls ?? [] }} />
-          <dl className="product-detail-meta"><div><dt>Brand</dt><dd>{product.brand || 'Not specified'}</dd></div><div><dt>Stock</dt><dd>{product.has_variants ? `${product.stock} across variants` : product.stock}</dd></div><div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div></dl>
+          <dl className="product-detail-meta"><div><dt>Stock</dt><dd>{product.has_variants ? `${product.stock} across variants` : product.stock}</dd></div><div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div></dl>
           {product.short_description && <p className="product-short-description">{product.short_description}</p>}
           {descriptionParagraphs.length > 0 && <div className="product-description"><h2>Description</h2>{descriptionParagraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
           {specificationRows.length > 0 && <section className="product-specifications"><h2>Specifications</h2><dl>{specificationRows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl></section>}
