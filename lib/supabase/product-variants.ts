@@ -18,6 +18,7 @@ export type VariantDraft = {
   stock: string | number
   sku: string | null
   image_url: string | null
+  image_file?: File | null
 }
 
 export function validateVariants(hasVariants: boolean, rows: VariantDraft[]) {

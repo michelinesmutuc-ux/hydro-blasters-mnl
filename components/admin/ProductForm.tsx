@@ -67,6 +67,7 @@ export function ProductForm({ mode }: ProductFormProps) {
   const [duplicateSourceId, setDuplicateSourceId] = useState<string | null>(null)
   const [specificationRows, setSpecificationRows] = useState<SpecificationRow[]>([])
   const [variantRows, setVariantRows] = useState<VariantDraft[]>([])
+  const [loadedVariantImageUrls, setLoadedVariantImageUrls] = useState<string[]>([])
   const specificationRowsRef = useRef<SpecificationRow[]>([])
 
   useEffect(() => {
@@ -137,7 +138,8 @@ export function ProductForm({ mode }: ProductFormProps) {
         setIsLoadingProduct(false)
         return
       }
-      setVariantRows((variantData ?? []).map((variant) => ({ id: mode === 'add' ? crypto.randomUUID() : variant.id, name: variant.name, price: String(variant.price), stock: String(variant.stock), sku: variant.sku ?? '', image_url: variant.image_url ?? '' })))
+      setVariantRows((variantData ?? []).map((variant) => ({ id: mode === 'add' ? crypto.randomUUID() : variant.id, name: variant.name, price: String(variant.price), stock: String(variant.stock), sku: variant.sku ?? '', image_url: mode === 'add' ? '' : variant.image_url ?? '' })))
+      setLoadedVariantImageUrls(mode === 'add' ? [] : (variantData ?? []).map((variant) => variant.image_url).filter((url): url is string => Boolean(url)))
       setExistingImageUrls(existingUrls)
       setLoadedImageUrls(existingUrls)
       setIsLoadingProduct(false)
@@ -191,6 +193,31 @@ export function ProductForm({ mode }: ProductFormProps) {
       next.splice(nextIndex, 0, row)
       return next
     })
+  }
+
+  async function prepareVariantImages(savedProductId: string, rows: VariantDraft[]) {
+    const rowsWithNewImages = rows.filter((row) => row.image_file)
+    if (rowsWithNewImages.length === 0) return rows
+    let completed = 0
+    const total = rowsWithNewImages.length
+    const preparedRows: VariantDraft[] = []
+    for (const row of rows) {
+      if (!row.image_file) {
+        preparedRows.push(row)
+        continue
+      }
+      const [imageUrl] = await uploadProductImages({
+        files: [row.image_file],
+        productId: savedProductId,
+        onProgress: () => {
+          completed += 1
+          setUploadProgress({ completed, total })
+        },
+      })
+      if (!imageUrl) throw new Error(`Variant image for ${row.name || 'this option'} could not be uploaded.`)
+      preparedRows.push({ ...row, image_url: imageUrl, image_file: null })
+    }
+    return preparedRows
   }
 
   function specificationRowsFromSubmittedForm(form: HTMLFormElement) {
@@ -344,8 +371,9 @@ export function ProductForm({ mode }: ProductFormProps) {
         setLoadedImageUrls(uploadedImageUrls)
         setImageFiles([])
         try {
+          const savedVariantRows = draft.hasVariants ? await prepareVariantImages(data.id, variantRows) : []
           await replaceProductSpecifications(data.id, submittedSpecificationRows)
-          await replaceProductVariants(data.id, draft.hasVariants ? variantRows : [])
+          await replaceProductVariants(data.id, savedVariantRows)
         } catch (specificationError) {
           setError(`Product saved, but product details could not be saved. ${(specificationError as SupabaseError)?.message ?? 'Please retry.'}`)
           return
@@ -405,8 +433,18 @@ export function ProductForm({ mode }: ProductFormProps) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
       try {
+        const savedVariantRows = draft.hasVariants ? await prepareVariantImages(productId as string, variantRows) : []
         await replaceProductSpecifications(productId as string, submittedSpecificationRows)
-        await replaceProductVariants(productId as string, draft.hasVariants ? variantRows : [])
+        await replaceProductVariants(productId as string, savedVariantRows)
+        const currentVariantImageUrls = savedVariantRows.map((row) => row.image_url).filter((url): url is string => Boolean(url))
+        const removedVariantImageUrls = loadedVariantImageUrls.filter((url) => !currentVariantImageUrls.includes(url) && !finalImageUrls.includes(url))
+        if (removedVariantImageUrls.length > 0) {
+          try {
+            await deleteProductImages(removedVariantImageUrls)
+          } catch {
+            // The saved variant row is already correct. A later product-image cleanup can remove an unused object safely.
+          }
+        }
       } catch (specificationError) {
         setExistingImageUrls(finalImageUrls)
         setLoadedImageUrls(finalImageUrls)
@@ -471,7 +509,7 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={styles.field}><label htmlFor={`variant-price-${row.id}`}>Price</label><input id={`variant-price-${row.id}`} type="number" min="0" step="0.01" value={row.price} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, price: event.target.value } : variant))} disabled={isSaving} /></div>
           <div className={styles.field}><label htmlFor={`variant-stock-${row.id}`}>Stock</label><input id={`variant-stock-${row.id}`} type="number" min="0" step="1" value={row.stock} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, stock: event.target.value } : variant))} disabled={isSaving} /></div>
           <div className={styles.field}><label htmlFor={`variant-sku-${row.id}`}>SKU (optional)</label><input id={`variant-sku-${row.id}`} value={row.sku ?? ''} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, sku: event.target.value } : variant))} disabled={isSaving} /></div>
-          <div className={styles.field}><label htmlFor={`variant-image-${row.id}`}>Variant Image URL (optional)</label><input id={`variant-image-${row.id}`} value={row.image_url ?? ''} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, image_url: event.target.value } : variant))} disabled={isSaving} /></div>
+          <div className={`${styles.field} ${styles.variantImageField}`}><span className={styles.fieldLegend}>Variant Image (optional)</span><ProductImageUploader files={row.image_file ? [row.image_file] : []} onFilesChange={(files) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, image_file: files[0] ?? null, image_url: files[0] ? null : variant.image_url } : variant))} existingImageUrls={row.image_url ? [row.image_url] : []} onExistingImageUrlsChange={() => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, image_url: null, image_file: null } : variant))} disabled={isSaving} progress={null} maxFiles={1} uploadTitle="Drop a variant image here or choose a file" uploadHint="Optional JPG, PNG, or WebP. This replaces only the main product image when selected." previewLabel={`variant ${row.name || index + 1}`} /></div>
           <div className={styles.specificationActions}><button type="button" className={styles.rowAction} onClick={() => moveVariantRow(index, -1)} disabled={isSaving || index === 0}>Move up</button><button type="button" className={styles.rowAction} onClick={() => moveVariantRow(index, 1)} disabled={isSaving || index === variantRows.length - 1}>Move down</button><button type="button" className={`${styles.rowAction} ${styles.rowDelete}`} onClick={() => setVariantRows((current) => current.filter((variant) => variant.id !== row.id))} disabled={isSaving}>Remove Variant {index + 1}</button></div>
         </div>)}</div>}
       </section>}

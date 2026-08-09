@@ -11,11 +11,15 @@ type ProductImageUploaderProps = {
   onExistingImageUrlsChange?: (urls: string[]) => void
   disabled?: boolean
   progress: { completed: number; total: number } | null
+  maxFiles?: number
+  uploadTitle?: string
+  uploadHint?: string
+  previewLabel?: string
 }
 
 const acceptedTypes = new Set<string>(acceptedImageTypes)
 
-export function ProductImageUploader({ files, onFilesChange, existingImageUrls = [], onExistingImageUrlsChange, disabled = false, progress }: ProductImageUploaderProps) {
+export function ProductImageUploader({ files, onFilesChange, existingImageUrls = [], onExistingImageUrlsChange, disabled = false, progress, maxFiles, uploadTitle = 'Drop images here or choose files', uploadHint = 'JPG, PNG, or WebP. Select multiple images; the first becomes the primary image.', previewLabel = 'product' }: ProductImageUploaderProps) {
   const inputId = useId()
   const [isDragging, setIsDragging] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -30,7 +34,8 @@ export function ProductImageUploader({ files, onFilesChange, existingImageUrls =
       return
     }
     setValidationError(null)
-    onFilesChange([...files, ...newFiles])
+    const nextFiles = [...files, ...newFiles]
+    onFilesChange(maxFiles ? nextFiles.slice(0, maxFiles) : nextFiles)
   }
 
   function removeFile(index: number) {
@@ -43,23 +48,23 @@ export function ProductImageUploader({ files, onFilesChange, existingImageUrls =
 
   return (
     <div className={styles.imageUpload}>
-      <input id={inputId} className={styles.fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={disabled} onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.currentTarget.value = '' }} />
+      <input id={inputId} className={styles.fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple={maxFiles !== 1} disabled={disabled} onChange={(event) => { if (event.target.files) addFiles(event.target.files); event.currentTarget.value = '' }} />
       <label htmlFor={inputId} className={`${styles.dropzone} ${isDragging ? styles.dropzoneActive : ''} ${disabled ? styles.dropzoneDisabled : ''}`} onDragEnter={(event) => { event.preventDefault(); if (!disabled) setIsDragging(true) }} onDragOver={(event) => event.preventDefault()} onDragLeave={(event) => { event.preventDefault(); setIsDragging(false) }} onDrop={(event) => { event.preventDefault(); setIsDragging(false); if (!disabled) addFiles(event.dataTransfer.files) }}>
-        <strong>Drop images here or choose files</strong>
-        <span>JPG, PNG, or WebP. Select multiple images; the first becomes the primary image.</span>
+        <strong>{uploadTitle}</strong>
+        <span>{uploadHint}</span>
       </label>
       {validationError && <p className={styles.imageError} role="alert">{validationError}</p>}
       {progress && <p className={styles.uploadProgress} role="status">Uploading image {progress.completed} of {progress.total}…</p>}
-      {(existingImageUrls.length > 0 || previews.length > 0) && <div className={styles.previewGrid} aria-label="Selected product images">
+      {(existingImageUrls.length > 0 || previews.length > 0) && <div className={styles.previewGrid} aria-label={`Selected ${previewLabel} images`}>
         {existingImageUrls.map((url, index) => <article className={styles.previewCard} key={url}>
-          <img src={url} alt={`Saved product image ${index + 1}`} />
+          <img src={url} alt={`Saved ${previewLabel} image ${index + 1}`} />
           {index === 0 && <span className={styles.primaryImageLabel}>Primary</span>}
-          <button type="button" className={styles.removeImageButton} disabled={disabled} onClick={() => removeExistingImage(index)} aria-label={`Remove saved image ${index + 1}`}>Remove</button>
+          <button type="button" className={styles.removeImageButton} disabled={disabled} onClick={() => removeExistingImage(index)} aria-label={`Remove saved ${previewLabel} image ${index + 1}`}>Remove</button>
         </article>)}
         {previews.map((preview, index) => <article className={styles.previewCard} key={`${preview.file.name}-${preview.file.lastModified}-${index}`}>
-          <img src={preview.url} alt={`Selected product image ${index + 1}`} />
+          <img src={preview.url} alt={`Selected ${previewLabel} image ${index + 1}`} />
           {existingImageUrls.length === 0 && index === 0 && <span className={styles.primaryImageLabel}>Primary</span>}
-          <button type="button" className={styles.removeImageButton} disabled={disabled} onClick={() => removeFile(index)} aria-label={`Remove selected image ${index + 1}`}>Remove</button>
+          <button type="button" className={styles.removeImageButton} disabled={disabled} onClick={() => removeFile(index)} aria-label={`Remove selected ${previewLabel} image ${index + 1}`}>Remove</button>
         </article>)}
       </div>}
     </div>

@@ -39,7 +39,7 @@ function ProductUnavailable() {
   return <section className="section product-unavailable"><p className="eyebrow">Product unavailable</p><h1>This product is not available</h1><p>The product may no longer exist or is not currently active.</p><a className="primary-button" href="/shop">Return to shop</a></section>
 }
 
-function ProductPurchaseActions({ product, variants }: { product: Product; variants: ProductVariant[] }) {
+function ProductPurchaseActions({ product, variants, onVariantImageChange }: { product: Product; variants: ProductVariant[]; onVariantImageChange: (imageUrl: string | null) => void }) {
   const { add, lines, subtotal } = useCart()
   const [quantity, setQuantity] = useState(1)
   const [confirmation, setConfirmation] = useState<'cart' | 'buy' | null>(null)
@@ -86,7 +86,7 @@ function ProductPurchaseActions({ product, variants }: { product: Product; varia
 
   return <div className="product-purchase-actions">
     {hasVariants && <p className="product-variant-price">{selectedVariant ? Number(currentPrice).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' }) : `From ${Number(product.price).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}`}</p>}
-    {hasVariants && <fieldset className="variant-selector"><legend>Choose {product.variant_group_name || 'Option'}</legend><div>{variants.map((variant) => <button type="button" key={variant.id} className={selectedVariantId === variant.id ? 'variant-option variant-option-selected' : 'variant-option'} onClick={() => { setSelectedVariantId(variant.id); setSelectionError(null); setQuantity(1); setConfirmation(null) }} aria-pressed={selectedVariantId === variant.id} disabled={variant.stock < 1}>{variant.name}<small>{Number(variant.price).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}{variant.stock < 1 ? ' · Out of Stock' : ''}</small></button>)}</div></fieldset>}
+    {hasVariants && <fieldset className="variant-selector"><legend>Choose {product.variant_group_name || 'Option'}</legend><div>{variants.map((variant) => <button type="button" key={variant.id} className={selectedVariantId === variant.id ? 'variant-option variant-option-selected' : 'variant-option'} onClick={() => { setSelectedVariantId(variant.id); onVariantImageChange(variant.image_url || null); setSelectionError(null); setQuantity(1); setConfirmation(null) }} aria-pressed={selectedVariantId === variant.id} disabled={variant.stock < 1}>{variant.name}<small>{Number(variant.price).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}{variant.stock < 1 ? ' · Out of Stock' : ''}</small></button>)}</div></fieldset>}
     {selectionError && <p className="product-purchase-unavailable" role="status">{selectionError}</p>}
     {unavailableReason && selectedVariant && <p className="product-purchase-unavailable" role="status">{unavailableReason}</p>}
     <label className="product-quantity-control">Quantity<div><button type="button" aria-label={`Decrease ${product.name} quantity`} disabled={quantity <= 1 || !selectedVariant && hasVariants} onClick={() => changeQuantity(quantity - 1)}>−</button><output aria-label={`${product.name} quantity`}>{quantity}</output><button type="button" aria-label={`Increase ${product.name} quantity`} disabled={quantity >= availableStock || !selectedVariant && hasVariants} onClick={() => changeQuantity(Math.min(availableStock, quantity + 1))}>+</button></div></label>
@@ -97,12 +97,13 @@ function ProductPurchaseActions({ product, variants }: { product: Product; varia
 
 export function ProductDetails({ product, specificationRows = [], variantRows = [], error }: { product: Product | null; specificationRows?: ProductSpecification[]; variantRows?: ProductVariant[]; error?: string | null }) {
   const [selectedImage, setSelectedImage] = useState(0)
+  const [selectedVariantImage, setSelectedVariantImage] = useState<string | null>(null)
 
   if (error) return <section className="section"><div className="catalogue-state" role="alert">This product could not be loaded. Please try again later.</div></section>
   if (!product) return <ProductUnavailable />
 
   const firstImage = product.image_urls?.[0] ?? null
-  const mainImage = product.image_urls?.[selectedImage] ?? firstImage
+  const mainImage = selectedVariantImage ?? product.image_urls?.[selectedImage] ?? firstImage
   const productImages = product.image_urls ?? []
   const descriptionParagraphs = product.description?.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter(Boolean) ?? []
 
@@ -112,13 +113,13 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
       <div className="product-detail-grid">
         <div className="product-gallery">
           <ProductImageFrame src={mainImage} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="main" />
-          {productImages.length > 1 && <div className="product-thumbnails" aria-label="Product images">{productImages.map((imageUrl, index) => <button className={`${stylesForThumbnail(index === selectedImage)}`} type="button" key={imageUrl} onClick={() => setSelectedImage(index)} aria-label={`Show image ${index + 1} of ${product.name}`} aria-pressed={index === selectedImage}><ProductImageFrame src={imageUrl} alt="" fallbackLabel={`Image ${index + 1}`} variant="thumbnail" /></button>)}</div>}
+          {productImages.length > 1 && <div className="product-thumbnails" aria-label="Product images">{productImages.map((imageUrl, index) => <button className={`${stylesForThumbnail(!selectedVariantImage && index === selectedImage)}`} type="button" key={imageUrl} onClick={() => { setSelectedVariantImage(null); setSelectedImage(index) }} aria-label={`Show image ${index + 1} of ${product.name}`} aria-pressed={!selectedVariantImage && index === selectedImage}><ProductImageFrame src={imageUrl} alt="" fallbackLabel={`Image ${index + 1}`} variant="thumbnail" /></button>)}</div>}
         </div>
         <div className="product-detail-copy">
           <p className="eyebrow">{product.category}</p>
           <h1>{product.name}</h1>
           {!product.has_variants && <p className="product-price">{product.price}</p>}
-          <ProductPurchaseActions product={product} variants={variantRows} />
+          <ProductPurchaseActions product={product} variants={variantRows} onVariantImageChange={setSelectedVariantImage} />
           <CompareButton product={{ ...product, image_urls: product.image_urls ?? [] }} />
           <dl className="product-detail-meta"><div><dt>Brand</dt><dd>{product.brand || 'Not specified'}</dd></div><div><dt>Stock</dt><dd>{product.has_variants ? `${product.stock} across variants` : product.stock}</dd></div><div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div></dl>
           {product.short_description && <p className="product-short-description">{product.short_description}</p>}
