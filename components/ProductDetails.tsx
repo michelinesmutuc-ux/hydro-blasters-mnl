@@ -118,6 +118,7 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
         <div className="product-gallery">
           <ProductImageFrame src={mainImage} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="main" />
           {productImages.length > 1 && <div className="product-thumbnails" aria-label="Product images">{productImages.map((imageUrl, index) => <button className={`${stylesForThumbnail(!selectedVariantImage && index === selectedImage)}`} type="button" key={imageUrl} onClick={() => { setSelectedVariantImage(null); setSelectedImage(index) }} aria-label={`Show image ${index + 1} of ${product.name}`} aria-pressed={!selectedVariantImage && index === selectedImage}><ProductImageFrame src={imageUrl} alt="" fallbackLabel={`Image ${index + 1}`} variant="thumbnail" /></button>)}</div>}
+          {specificationRows.length > 0 && <section className="product-specifications"><h2>Specifications</h2><dl>{specificationRows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl></section>}
         </div>
         <div className="product-detail-copy">
           {product.brand && <Link className="product-brand" href={`/shop?brand=${encodeURIComponent(product.brand)}`}><span>Brand</span><strong>{product.brand}</strong></Link>}
@@ -128,7 +129,6 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
           <dl className="product-detail-meta"><div><dt>Stock</dt><dd>{product.has_variants ? `${product.stock} across variants` : product.stock}</dd></div><div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div></dl>
           {product.short_description && <p className="product-short-description">{product.short_description}</p>}
           {descriptionParagraphs.length > 0 && <div className="product-description"><h2>Description</h2>{descriptionParagraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
-          {specificationRows.length > 0 && <section className="product-specifications"><h2>Specifications</h2><dl>{specificationRows.map((row) => <div key={row.id}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl></section>}
           <ProductHelpCallout specifications={specificationRows} />
         </div>
       </div>

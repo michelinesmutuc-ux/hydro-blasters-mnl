@@ -99,3 +99,7 @@ footer { padding:34px 20px 42px; border-top:1px solid var(--line); }.footer-bran
 
 /* Brand is a first-scan product fact, not hidden among the secondary metadata. */
 .product-brand{position:relative;display:inline-grid;gap:4px;margin:5px 0 16px;padding-left:12px;color:var(--purple);text-decoration:none}.product-brand::before{position:absolute;inset:1px auto 1px 0;width:2px;background:var(--purple);content:""}.product-brand span{color:var(--white);font-size:12px;font-weight:800;letter-spacing:.11em;line-height:1;text-transform:uppercase}.product-brand strong{color:var(--purple);font-size:20px;font-weight:900;letter-spacing:.075em;line-height:1.05;text-transform:uppercase;text-shadow:0 0 10px rgba(157,117,255,.22)}.product-brand:hover strong,.product-brand:focus-visible strong{color:#c4b3ff}.product-brand:focus-visible{outline:2px solid var(--purple);outline-offset:4px}.product-detail-meta{grid-template-columns:1fr 1fr}@media(max-width:430px){.product-brand{margin-bottom:14px}.product-brand span{font-size:11px}.product-brand strong{font-size:18px}}
+
+/* The specification table balances the desktop gallery column; mobile remains purchase-first. */
+@media(max-width:819px){.product-gallery{display:contents}.product-image-frame-main,.product-thumbnails{order:1}.product-detail-copy{order:2}.product-specifications{order:3}}
+@media(min-width:820px){.product-gallery{display:block}.product-gallery .product-specifications{margin-top:30px}.product-detail-copy .product-help-callout{margin-top:34px}}
