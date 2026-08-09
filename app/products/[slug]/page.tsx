@@ -2,6 +2,7 @@ import { ProductDetails, type Product } from '../../../components/ProductDetails
 import { supabase } from '../../../lib/supabase/client'
 import { fetchActiveProductBySlug } from '../../../lib/supabase/products'
 import { fetchProductSpecifications } from '../../../lib/supabase/product-specifications'
+import { fetchProductVariants } from '../../../lib/supabase/product-variants'
 import { CartLink } from '../../../components/CartLink'
 import { SiteFooter } from '../../../components/SiteFooter'
 import type { Metadata } from 'next'
@@ -41,10 +42,14 @@ export default async function ProductPage({ params: paramsPromise }: { params: P
   const { data: specificationRows, error: specificationError } = data
     ? await fetchProductSpecifications(data.id)
     : { data: [], error: null }
+  const { data: variantRows, error: variantError } = data
+    ? await fetchProductVariants(data.id)
+    : { data: [], error: null }
 
   if (specificationError) {
     throw new Error(`Could not export specifications for ${params.slug}: ${specificationError.message}`)
   }
+  if (variantError) throw new Error(`Could not export variants for ${params.slug}: ${variantError.message}`)
 
   return (
     <div className="site-shell">
@@ -55,7 +60,7 @@ export default async function ProductPage({ params: paramsPromise }: { params: P
         <PrimaryNavigation />
         <div className="header-actions"><button className="icon-button" type="button" aria-label="Search">⌕</button><CartLink /></div>
       </header>
-      <main><ProductDetails product={data as Product | null} specificationRows={specificationRows ?? []} error={error?.message} /></main>
+      <main><ProductDetails product={data as Product | null} specificationRows={specificationRows ?? []} variantRows={variantRows ?? []} error={error?.message} /></main>
       <SiteFooter />
     </div>
   )

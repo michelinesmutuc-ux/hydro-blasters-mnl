@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase/client'
 import { deleteProductImages, uploadProductImages } from '../../lib/supabase/product-images'
 import { fetchAdminProduct, findAvailableProductSlug } from '../../lib/supabase/products'
 import { fetchProductSpecifications, normalizeSpecificationRows, replaceProductSpecifications } from '../../lib/supabase/product-specifications'
+import { fetchProductVariants, replaceProductVariants, validateVariants, type VariantDraft } from '../../lib/supabase/product-variants'
 import { markCatalogueWriteComplete, markCatalogueWritePending, markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
 import { ProductImageUploader } from './ProductImageUploader'
@@ -39,12 +40,13 @@ function slugify(value: string) {
 }
 
 function initialValues() {
-  return { name: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shippingClassification: 'standard', shortDescription: '', description: '', featured: false, isActive: false, showOnHomepage: false, highlightType: 'none' as HighlightType, homepageSortOrder: '' }
+  return { name: '', brand: '', category: '', price: '0', stock: '0', status: 'draft', shippingClassification: 'standard', shortDescription: '', description: '', featured: false, isActive: false, hasVariants: false, variantGroupName: '', showOnHomepage: false, highlightType: 'none' as HighlightType, homepageSortOrder: '' }
 }
 
 function newSpecificationRow(): SpecificationRow {
   return { id: crypto.randomUUID(), label: '', value: '' }
 }
+function newVariantRow(): VariantDraft { return { id: crypto.randomUUID(), name: '', price: '0', stock: '0', sku: '', image_url: '' } }
 
 export function ProductForm({ mode }: ProductFormProps) {
   const router = useRouter()
@@ -64,6 +66,7 @@ export function ProductForm({ mode }: ProductFormProps) {
   const [isLoadingProduct, setIsLoadingProduct] = useState(mode === 'edit')
   const [duplicateSourceId, setDuplicateSourceId] = useState<string | null>(null)
   const [specificationRows, setSpecificationRows] = useState<SpecificationRow[]>([])
+  const [variantRows, setVariantRows] = useState<VariantDraft[]>([])
   const specificationRowsRef = useRef<SpecificationRow[]>([])
 
   useEffect(() => {
@@ -97,6 +100,8 @@ export function ProductForm({ mode }: ProductFormProps) {
         description: data.description ?? '',
         featured: data.featured,
         isActive: mode === 'add' ? false : data.is_active,
+        hasVariants: data.has_variants ?? false,
+        variantGroupName: data.variant_group_name ?? '',
         showOnHomepage: mode === 'add' ? false : data.show_on_homepage ?? false,
         highlightType: (data.highlight_type ?? 'none') as HighlightType,
         homepageSortOrder: data.homepage_sort_order === null || data.homepage_sort_order === undefined ? '' : String(data.homepage_sort_order),
@@ -126,6 +131,13 @@ export function ProductForm({ mode }: ProductFormProps) {
         setSpecificationRows(rows)
       }
       const existingUrls = Array.isArray(data.image_urls) ? data.image_urls : []
+      const { data: variantData, error: variantError } = await fetchProductVariants(data.id)
+      if (variantError) {
+        setError(`The product loaded, but its variants could not be loaded. ${variantError.message}`)
+        setIsLoadingProduct(false)
+        return
+      }
+      setVariantRows((variantData ?? []).map((variant) => ({ id: mode === 'add' ? crypto.randomUUID() : variant.id, name: variant.name, price: String(variant.price), stock: String(variant.stock), sku: variant.sku ?? '', image_url: variant.image_url ?? '' })))
       setExistingImageUrls(existingUrls)
       setLoadedImageUrls(existingUrls)
       setIsLoadingProduct(false)
@@ -168,6 +180,17 @@ export function ProductForm({ mode }: ProductFormProps) {
     next.splice(nextIndex, 0, row)
     specificationRowsRef.current = next
     setSpecificationRows(next)
+  }
+
+  function moveVariantRow(index: number, direction: -1 | 1) {
+    const nextIndex = index + direction
+    if (nextIndex < 0 || nextIndex >= variantRows.length) return
+    setVariantRows((current) => {
+      const next = [...current]
+      const [row] = next.splice(index, 1)
+      next.splice(nextIndex, 0, row)
+      return next
+    })
   }
 
   function specificationRowsFromSubmittedForm(form: HTMLFormElement) {
@@ -225,6 +248,19 @@ export function ProductForm({ mode }: ProductFormProps) {
       .replace(/^-+|-+$/g, '')
     const price = Number(draft.price)
     const stock = Number(draft.stock)
+    let validatedVariants: ReturnType<typeof validateVariants> = []
+    try {
+      validatedVariants = validateVariants(draft.hasVariants, variantRows)
+    } catch (variantError) {
+      setError(variantError instanceof Error ? variantError.message : 'Check the variant options and try again.')
+      return
+    }
+    if (draft.hasVariants && !draft.variantGroupName.trim()) {
+      setError('Enter a Variant Group Name, such as Color or Package.')
+      return
+    }
+    const effectivePrice = draft.hasVariants ? Math.min(...validatedVariants.map((variant) => Number(variant.price))) : price
+    const effectiveStock = draft.hasVariants ? validatedVariants.reduce((total, variant) => total + Number(variant.stock), 0) : stock
     const homepageSortOrder = draft.homepageSortOrder.trim() === '' ? null : Number(draft.homepageSortOrder)
     if (!draft.name.trim() || (mode === 'add' && !normalizedSlug) || !draft.category || !Number.isFinite(price) || price < 0 || !Number.isInteger(stock) || stock < 0 || (homepageSortOrder !== null && !Number.isInteger(homepageSortOrder))) {
       setError('Please complete the required fields with a valid non-negative price and whole-number stock value.')
@@ -255,8 +291,8 @@ export function ProductForm({ mode }: ProductFormProps) {
         name: draft.name.trim(),
         brand: draft.brand.trim() || null,
         category: draft.category,
-        price,
-        stock,
+        price: effectivePrice,
+        stock: effectiveStock,
         status: draft.status,
         shipping_classification: draft.shippingClassification,
         short_description: draft.shortDescription.trim() || null,
@@ -265,6 +301,8 @@ export function ProductForm({ mode }: ProductFormProps) {
         image_urls: [],
         featured: draft.featured,
         is_active: draft.isActive,
+        has_variants: draft.hasVariants,
+        variant_group_name: draft.hasVariants ? draft.variantGroupName.trim() : null,
         show_on_homepage: draft.showOnHomepage,
         highlight_type: draft.showOnHomepage && draft.highlightType !== 'none' ? draft.highlightType : null,
         homepage_sort_order: draft.showOnHomepage ? homepageSortOrder : null,
@@ -275,7 +313,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         const { data, error: insertError } = await supabase
           .from('products')
           .insert({ ...productPayload, slug: createdSlug })
-          .select('id,name,slug,brand,category,price,stock,status,featured,is_active,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+          .select('id,name,slug,brand,category,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
           .single()
         if (insertError || !data) {
           console.error('[Hydro Blasters MNL] products insert failed:', insertError)
@@ -297,7 +335,7 @@ export function ProductForm({ mode }: ProductFormProps) {
             .from('products')
             .update({ image_urls: uploadedImageUrls, updated_at: new Date().toISOString() })
             .eq('id', data.id)
-            .select('id,name,slug,brand,category,price,stock,status,featured,is_active,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+            .select('id,name,slug,brand,category,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
             .single()
           if (imageUpdateError || !imageUpdatedProduct) throw imageUpdateError ?? new Error('Product saved, but its image URLs could not be saved.')
           savedProduct = imageUpdatedProduct
@@ -307,8 +345,9 @@ export function ProductForm({ mode }: ProductFormProps) {
         setImageFiles([])
         try {
           await replaceProductSpecifications(data.id, submittedSpecificationRows)
+          await replaceProductVariants(data.id, draft.hasVariants ? variantRows : [])
         } catch (specificationError) {
-          setError(describeSpecificationError(specificationError, true))
+          setError(`Product saved, but product details could not be saved. ${(specificationError as SupabaseError)?.message ?? 'Please retry.'}`)
           return
         }
         markWebsiteChangesUnpublished()
@@ -334,8 +373,8 @@ export function ProductForm({ mode }: ProductFormProps) {
         name: draft.name.trim(),
         brand: draft.brand.trim() || null,
         category: draft.category,
-        price,
-        stock,
+        price: effectivePrice,
+        stock: effectiveStock,
         status: draft.status,
         shipping_classification: draft.shippingClassification,
         short_description: draft.shortDescription.trim() || null,
@@ -344,6 +383,8 @@ export function ProductForm({ mode }: ProductFormProps) {
         image_urls: finalImageUrls,
         featured: draft.featured,
         is_active: draft.isActive,
+        has_variants: draft.hasVariants,
+        variant_group_name: draft.hasVariants ? draft.variantGroupName.trim() : null,
         show_on_homepage: draft.showOnHomepage,
         highlight_type: draft.showOnHomepage && draft.highlightType !== 'none' ? draft.highlightType : null,
         homepage_sort_order: draft.showOnHomepage ? homepageSortOrder : null,
@@ -355,7 +396,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         .from('products')
         .update(updatePayload)
         .eq('id', productId as string)
-        .select('id,name,slug,brand,category,price,stock,status,featured,is_active,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+        .select('id,name,slug,brand,category,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
         .single()
       if (updateError) throw updateError
       console.log('Returned Supabase row:', data)
@@ -365,6 +406,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       }
       try {
         await replaceProductSpecifications(productId as string, submittedSpecificationRows)
+        await replaceProductVariants(productId as string, draft.hasVariants ? variantRows : [])
       } catch (specificationError) {
         setExistingImageUrls(finalImageUrls)
         setLoadedImageUrls(finalImageUrls)
@@ -399,13 +441,16 @@ export function ProductForm({ mode }: ProductFormProps) {
           {mode === 'add' && <div className={styles.field}><label htmlFor="product-slug">Slug</label><input id="product-slug" required value={newProductSlug} onChange={(event) => { setNewProductSlugEdited(true); setNewProductSlug(event.target.value) }} placeholder="product-slug" /><span className={styles.slugHint}>{duplicateSourceId ? 'Temporary slug generated from the duplicate name. It becomes permanent after the first save.' : 'Generated from the product name. You can edit it before saving.'}</span></div>}
           <div className={styles.field}><label htmlFor="brand">Brand</label><input id="brand" value={draft.brand} onChange={(event) => update('brand', event.target.value)} placeholder="Brand name" /></div>
           <div className={styles.field}><label htmlFor="category">Category</label><select id="category" required value={draft.category} onChange={(event) => update('category', event.target.value)}><option value="" disabled>Select a category</option>{categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}</select></div>
-          <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={draft.price} onChange={(event) => update('price', event.target.value)} /></div>
-          <div className={styles.field}><label htmlFor="stock">Stock</label><input id="stock" required min="0" step="1" type="number" value={draft.stock} onChange={(event) => update('stock', event.target.value)} /></div>
+          <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={draft.price} disabled={draft.hasVariants} onChange={(event) => update('price', event.target.value)} />{draft.hasVariants && <span className={styles.slugHint}>Calculated from the lowest variant price.</span>}</div>
+          <div className={styles.field}><label htmlFor="stock">Stock</label><input id="stock" required min="0" step="1" type="number" value={draft.stock} disabled={draft.hasVariants} onChange={(event) => update('stock', event.target.value)} />{draft.hasVariants && <span className={styles.slugHint}>Calculated from total variant stock.</span>}</div>
           <div className={styles.field}><label htmlFor="status">Status</label><select id="status" value={draft.status} onChange={(event) => update('status', event.target.value)}>{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></div>
           <div className={styles.field}><label htmlFor="shipping-classification">Shipping classification</label><select id="shipping-classification" value={draft.shippingClassification} onChange={(event) => update('shippingClassification', event.target.value as 'standard' | 'bulky')}><option value="standard">Standard — ₱149 when cart contains no bulky item</option><option value="bulky">Bulky — ₱199 nationwide shipping</option></select></div>
           <div className={styles.toggleRow}>
             <label className={styles.toggle}><span><strong>Featured</strong><span>Set featured status</span></span><input className={styles.switch} type="checkbox" checked={draft.featured} onChange={(event) => update('featured', event.target.checked)} /></label>
             <label className={styles.toggle}><span><strong>Active</strong><span>Set active status</span></span><input className={styles.switch} type="checkbox" checked={draft.isActive} onChange={(event) => update('isActive', event.target.checked)} /></label>
+          </div>
+          <div className={`${styles.toggleRow} ${styles.fieldFull}`}>
+            <label className={styles.toggle}><span><strong>This product has variants</strong><span>Use one option group, such as Color or Package.</span></span><input className={styles.switch} type="checkbox" checked={draft.hasVariants} onChange={(event) => update('hasVariants', event.target.checked)} /></label>
           </div>
           <div className={`${styles.toggleRow} ${styles.fieldFull}`}>
             <label className={styles.toggle}><span><strong>Show in Homepage Highlights</strong><span>Manually place this product in the homepage Featured Products section</span></span><input className={styles.switch} type="checkbox" checked={draft.showOnHomepage} onChange={(event) => update('showOnHomepage', event.target.checked)} /></label>
@@ -418,6 +463,18 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={`${styles.field} ${styles.fieldFull}`}><label htmlFor="description">Full Description</label><textarea id="description" value={draft.description} onChange={(event) => update('description', event.target.value)} placeholder="Full product description" /></div>
         </div>
       </section>
+      {draft.hasVariants && <section className={styles.formSection}>
+        <div className={styles.specificationHeader}><div><h2>Variants</h2><p>Use one option group only. Variant price and stock are used at checkout.</p></div><button className={styles.secondaryButton} type="button" onClick={() => setVariantRows((current) => [...current, newVariantRow()])} disabled={isSaving}>Add Variant</button></div>
+        <div className={styles.field}><label htmlFor="variant-group-name">Variant Group Name</label><input id="variant-group-name" required value={draft.variantGroupName} onChange={(event) => update('variantGroupName', event.target.value)} placeholder="Color" disabled={isSaving} /></div>
+        {variantRows.length === 0 ? <p className={styles.specificationEmpty}>Add at least one variant option before saving.</p> : <div className={styles.specificationList}>{variantRows.map((row, index) => <div className={styles.variantRow} key={row.id}>
+          <div className={styles.field}><label htmlFor={`variant-name-${row.id}`}>Variant Name</label><input id={`variant-name-${row.id}`} value={row.name} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, name: event.target.value } : variant))} placeholder="Black" disabled={isSaving} /></div>
+          <div className={styles.field}><label htmlFor={`variant-price-${row.id}`}>Price</label><input id={`variant-price-${row.id}`} type="number" min="0" step="0.01" value={row.price} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, price: event.target.value } : variant))} disabled={isSaving} /></div>
+          <div className={styles.field}><label htmlFor={`variant-stock-${row.id}`}>Stock</label><input id={`variant-stock-${row.id}`} type="number" min="0" step="1" value={row.stock} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, stock: event.target.value } : variant))} disabled={isSaving} /></div>
+          <div className={styles.field}><label htmlFor={`variant-sku-${row.id}`}>SKU (optional)</label><input id={`variant-sku-${row.id}`} value={row.sku ?? ''} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, sku: event.target.value } : variant))} disabled={isSaving} /></div>
+          <div className={styles.field}><label htmlFor={`variant-image-${row.id}`}>Variant Image URL (optional)</label><input id={`variant-image-${row.id}`} value={row.image_url ?? ''} onChange={(event) => setVariantRows((current) => current.map((variant) => variant.id === row.id ? { ...variant, image_url: event.target.value } : variant))} disabled={isSaving} /></div>
+          <div className={styles.specificationActions}><button type="button" className={styles.rowAction} onClick={() => moveVariantRow(index, -1)} disabled={isSaving || index === 0}>Move up</button><button type="button" className={styles.rowAction} onClick={() => moveVariantRow(index, 1)} disabled={isSaving || index === variantRows.length - 1}>Move down</button><button type="button" className={`${styles.rowAction} ${styles.rowDelete}`} onClick={() => setVariantRows((current) => current.filter((variant) => variant.id !== row.id))} disabled={isSaving}>Remove Variant {index + 1}</button></div>
+        </div>)}</div>}
+      </section>}
       <section className={styles.formSection}>
         <div className={styles.specificationHeader}><div><h2>Specifications</h2><p>Add structured product details. Their displayed order is saved.</p></div><button className={styles.secondaryButton} type="button" onClick={() => { const next = [...specificationRowsRef.current, newSpecificationRow()]; specificationRowsRef.current = next; setSpecificationRows(next) }} disabled={isSaving}>Add specification</button></div>
         {specificationRows.length === 0 ? <p className={styles.specificationEmpty}>No specifications added yet.</p> : <div className={styles.specificationList}>{specificationRows.map((row, index) => <div className={styles.specificationRow} data-specification-row data-specification-id={row.id} key={row.id}>

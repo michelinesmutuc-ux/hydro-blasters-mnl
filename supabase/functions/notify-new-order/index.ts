@@ -27,7 +27,7 @@ type Order = {
   telegram_notification_attempted_at: string | null
 }
 
-type OrderItem = { product_name: string; quantity: number; line_total: number | string }
+type OrderItem = { product_name: string; variant_group_name: string | null; variant_name: string | null; quantity: number; line_total: number | string }
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -150,12 +150,15 @@ Deno.serve(async (request) => {
 
     const { data: items, error: itemsError } = await admin
       .from('order_items')
-      .select('product_name,quantity,line_total')
+      .select('product_name,variant_group_name,variant_name,quantity,line_total')
       .eq('order_id', order.id)
     if (itemsError || !items?.length) throw itemsError ?? new Error('Order items are missing.')
     console.info('Order Telegram items loaded.', { orderId: order.id, orderReference: order.order_reference, itemCount: items.length })
 
-    const itemLines = (items as OrderItem[]).map((item) => `• ${escapeTelegramHtml(item.product_name)} × ${item.quantity} — ${peso(item.line_total)}`).join('\n')
+    const itemLines = (items as OrderItem[]).map((item) => {
+      const variant = item.variant_name ? `\n  ${escapeTelegramHtml(item.variant_group_name || 'Option')}: ${escapeTelegramHtml(item.variant_name)}` : ''
+      return `• ${escapeTelegramHtml(item.product_name)}${variant}\n  × ${item.quantity} — ${peso(item.line_total)}`
+    }).join('\n')
     const address = [order.city_municipality, order.region].filter(Boolean).join(', ') || 'Not provided'
     const amountLines = [
       `<b>Merchandise</b>: ${peso(order.merchandise_subtotal)}`,

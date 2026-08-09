@@ -37,7 +37,7 @@ Deno.serve(async (request) => {
     if (!orders.length) return reply({ error: 'No matching order found.' }, 404)
     if (mode === 'customer' && orders.length > 1) return reply({ orders: orders.map(({ id, order_reference, created_at, order_status, overall_total }) => ({ id, order_reference, created_at, order_status, overall_total })) })
     const order = orders[0]
-    const { data: items, error: itemError } = await admin.from('order_items').select('product_name,quantity,line_total').eq('order_id', order.id)
+    const { data: items, error: itemError } = await admin.from('order_items').select('product_name,variant_group_name,variant_name,quantity,line_total').eq('order_id', order.id)
     if (itemError) throw itemError
     return reply({ order: { ...order, items: items ?? [] } })
   } catch (error) {

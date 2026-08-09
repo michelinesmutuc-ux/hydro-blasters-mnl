@@ -22,6 +22,8 @@ export type PublicProduct = {
   show_on_homepage?: boolean
   highlight_type?: HomepageHighlightType | null
   homepage_sort_order?: number | null
+  has_variants?: boolean
+  variant_group_name?: string | null
 }
 
 type ProductCardProps = {
@@ -55,11 +57,11 @@ export function ProductCard({ product, actions }: ProductCardProps) {
         <h2><Link className="product-card-title-link" href={productHref}>{product.name}</Link></h2>
           <dl className="product-meta">
             <div><dt>Brand</dt><dd>{product.brand || 'Not specified'}</dd></div>
-            <div><dt>Price</dt><dd>{product.price}</dd></div>
+            <div><dt>Price</dt><dd>{product.has_variants ? `From ₱${Number(product.price).toLocaleString('en-PH')}` : product.price}</dd></div>
             <div><dt>Stock</dt><dd>{product.stock}</dd></div>
             <div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div>
           </dl>
-        <div className="product-card-footer"><AddToCartButton product={product} /><div className="product-card-secondary-actions"><Link href={productHref}>View Product</Link><CompareButton product={product} compact /></div></div>
+        <div className="product-card-footer">{product.has_variants ? <Link className="primary-button" href={productHref}>Choose Options</Link> : <AddToCartButton product={product} />}<div className="product-card-secondary-actions"><Link href={productHref}>View Product</Link><CompareButton product={product} compact /></div></div>
       </div>
       {actions && <div className="product-card-actions">{actions}</div>}
     </article>

@@ -30,6 +30,14 @@ type Order = {
   order_notes: string | null
 }
 
+type OrderItem = {
+  order_id: string
+  product_name: string
+  variant_group_name: string | null
+  variant_name: string | null
+  quantity: number
+}
+
 type ProofDiagnostic = {
   orderId: string
   orderReference: string
@@ -80,6 +88,7 @@ async function findMatchingProofObjects(order: Order, storedPath: string) {
 
 export function OrdersTable() {
   const [orders, setOrders] = useState<Order[]>([])
+  const [orderItemsByOrder, setOrderItemsByOrder] = useState<Record<string, OrderItem[]>>({})
   const [error, setError] = useState<string | null>(null)
   const [retryingOrderId, setRetryingOrderId] = useState<string | null>(null)
   const [telegramFeedback, setTelegramFeedback] = useState<string | null>(null)
@@ -105,6 +114,23 @@ export function OrdersTable() {
 
     const rows = (data ?? []) as Order[]
     setOrders(rows)
+    if (rows.length === 0) {
+      setOrderItemsByOrder({})
+      return
+    }
+    const { data: itemRows, error: itemError } = await supabase
+      .from('order_items')
+      .select('order_id,product_name,variant_group_name,variant_name,quantity')
+      .in('order_id', rows.map((order) => order.id))
+    if (itemError) {
+      setError(itemError.message)
+      return
+    }
+    setOrderItemsByOrder((itemRows ?? []).reduce<Record<string, OrderItem[]>>((byOrder, item) => {
+      const typedItem = item as OrderItem
+      ;(byOrder[typedItem.order_id] ??= []).push(typedItem)
+      return byOrder
+    }, {}))
   }
 
   useEffect(() => { void load() }, [orderFilter])
@@ -334,13 +360,14 @@ export function OrdersTable() {
     {error && <p className={styles.errorMessage}>{error}</p>}
     {telegramFeedback && <p className={styles.status}>{telegramFeedback}</p>}
     <div className={styles.tableWrap}><table className={styles.table}>
-      <thead><tr><th>Reference</th><th>Customer</th><th>Delivery</th><th>Payment</th><th>Amounts</th><th>Status</th><th>Proof</th></tr></thead>
+      <thead><tr><th>Reference</th><th>Customer</th><th>Items</th><th>Delivery</th><th>Payment</th><th>Amounts</th><th>Status</th><th>Proof</th></tr></thead>
       <tbody>{orders.map((order) => {
         const proofDiagnostic = proofDiagnostics[order.id]
 
         return <tr key={order.id}>
         <td>{order.order_reference}</td>
         <td>{order.customer_name}<br />{order.mobile_number}</td>
+        <td>{(orderItemsByOrder[order.id] ?? []).map((item, index) => <div key={`${item.product_name}-${index}`}>{item.product_name}{item.variant_name && <><br /><span className={styles.placeholderText}>{item.variant_group_name || 'Option'}: {item.variant_name}</span></>}<br /><span className={styles.placeholderText}>Qty {item.quantity}</span></div>)}</td>
         <td>{order.delivery_method.replaceAll('_', ' ')}</td>
         <td>{order.payment_method.replaceAll('_', ' ')}{order.selected_payment_option_name && <><br />Bank selected: {order.selected_payment_option_name}</>}</td>
         <td>Amount due now ₱{order.upfront_amount}<br />Rider/showroom ₱{Number(order.rider_collectible_amount) || Number(order.showroom_payable_amount)}</td>

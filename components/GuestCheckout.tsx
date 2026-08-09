@@ -145,14 +145,14 @@ export function GuestCheckout() {
           delivery_method: delivery,
           payment_method: payment,
           payment_option_name: getPaymentOption(payment, bankOptionId)?.name ?? null,
-          items: lines.map((line) => ({ product_id: line.id, quantity: line.quantity })),
+          items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })),
           idempotency_key: getOrderAttemptKey(),
           payment_proof: proof ? { base64: await fileToBase64(proof), contentType: proof.type } : null,
         },
       })
       if (invokeError) throw invokeError
       if (data?.error) throw new Error(data.error)
-      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, customer_name: customerName, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, quantity: line.quantity, line_total: Number(line.price) * line.quantity })) }))
+      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, customer_name: customerName, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, variant_group_name: line.variant_group_name, variant_name: line.variant_name, quantity: line.quantity, line_total: Number(line.price) * line.quantity })) }))
       sessionStorage.removeItem('hydro-order-attempt-key')
       clear()
       router.push('/order-confirmation')
@@ -196,7 +196,7 @@ export function GuestCheckout() {
         </section>
         <section className="checkout-final-cta"><p className="eyebrow">Ready to submit your order?</p><SummarySubmit /></section>
       </div>
-      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>Shipping</dt><dd>{peso(shipping)}</dd></div><div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
+      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name}{line.variant_name ? <small>{line.variant_group_name || 'Option'}: {line.variant_name}</small> : null} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>Shipping</dt><dd>{peso(shipping)}</dd></div><div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
     </form>
   </section>
 }
