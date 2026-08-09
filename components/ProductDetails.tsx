@@ -35,6 +35,10 @@ function statusLabel(status: Product['status']) {
   return status.replaceAll('_', ' ')
 }
 
+function peso(value: number | string) {
+  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value))
+}
+
 function ProductUnavailable() {
   return <section className="section product-unavailable"><p className="eyebrow">Product unavailable</p><h1>This product is not available</h1><p>The product may no longer exist or is not currently active.</p><a className="primary-button" href="/shop">Return to shop</a></section>
 }
@@ -85,7 +89,7 @@ function ProductPurchaseActions({ product, variants, onVariantImageChange }: { p
   }
 
   return <div className="product-purchase-actions">
-    {hasVariants && <p className="product-variant-price">{selectedVariant ? Number(currentPrice).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' }) : `From ${Number(product.price).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}`}</p>}
+    {hasVariants && <p className="product-variant-price">{selectedVariant ? peso(currentPrice) : `From ${peso(product.price)}`}</p>}
     {hasVariants && <fieldset className="variant-selector"><legend>Choose {product.variant_group_name || 'Option'}</legend><div>{variants.map((variant) => <button type="button" key={variant.id} className={selectedVariantId === variant.id ? 'variant-option variant-option-selected' : 'variant-option'} onClick={() => { setSelectedVariantId(variant.id); onVariantImageChange(variant.image_url || null); setSelectionError(null); setQuantity(1); setConfirmation(null) }} aria-pressed={selectedVariantId === variant.id} disabled={variant.stock < 1}>{variant.name}<small>{Number(variant.price).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}{variant.stock < 1 ? ' · Out of Stock' : ''}</small></button>)}</div></fieldset>}
     {selectionError && <p className="product-purchase-unavailable" role="status">{selectionError}</p>}
     {unavailableReason && selectedVariant && <p className="product-purchase-unavailable" role="status">{unavailableReason}</p>}
@@ -118,7 +122,7 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
         <div className="product-detail-copy">
           <p className="eyebrow">{product.category}</p>
           <h1>{product.name}</h1>
-          {!product.has_variants && <p className="product-price">{product.price}</p>}
+          {!product.has_variants && <p className="product-price">{peso(product.price)}</p>}
           <ProductPurchaseActions product={product} variants={variantRows} onVariantImageChange={setSelectedVariantImage} />
           <CompareButton product={{ ...product, image_urls: product.image_urls ?? [] }} />
           <dl className="product-detail-meta"><div><dt>Brand</dt><dd>{product.brand || 'Not specified'}</dd></div><div><dt>Stock</dt><dd>{product.has_variants ? `${product.stock} across variants` : product.stock}</dd></div><div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div></dl>
