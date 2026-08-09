@@ -120,7 +120,6 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
           {productImages.length > 1 && <div className="product-thumbnails" aria-label="Product images">{productImages.map((imageUrl, index) => <button className={`${stylesForThumbnail(!selectedVariantImage && index === selectedImage)}`} type="button" key={imageUrl} onClick={() => { setSelectedVariantImage(null); setSelectedImage(index) }} aria-label={`Show image ${index + 1} of ${product.name}`} aria-pressed={!selectedVariantImage && index === selectedImage}><ProductImageFrame src={imageUrl} alt="" fallbackLabel={`Image ${index + 1}`} variant="thumbnail" /></button>)}</div>}
         </div>
         <div className="product-detail-copy">
-          <p className="eyebrow">{product.category}</p>
           {product.brand && <Link className="product-brand" href={`/shop?brand=${encodeURIComponent(product.brand)}`}><span>Brand</span><strong>{product.brand}</strong></Link>}
           <h1>{product.name}</h1>
           {!product.has_variants && <p className="product-price">{peso(product.price)}</p>}
