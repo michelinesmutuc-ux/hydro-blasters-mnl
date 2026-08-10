@@ -7,7 +7,8 @@ import { deleteProductImages } from '../../lib/supabase/product-images'
 import { fetchAdminProducts } from '../../lib/supabase/products'
 import { markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
-import { GEL_BLASTER_TYPES, gelBlasterTypeFilterLabels, isGelBlasterCategory, type GelBlasterType } from '../../lib/products/product-types'
+import { GEL_BLASTER_TYPES, gelBlasterTypeFilterLabels, isGelBlasterCategory, isGelBlasterType, type GelBlasterType } from '../../lib/products/product-types'
+import { productCategoryOptions } from '../../lib/products/category-order'
 import styles from './admin.module.css'
 
 type Product = {
@@ -56,11 +57,16 @@ export function ProductsTable() {
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null)
   const [savingPriceId, setSavingPriceId] = useState<string | null>(null)
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null)
+  const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({})
+  const [categoryTypeDrafts, setCategoryTypeDrafts] = useState<Record<string, GelBlasterType | ''>>({})
   const [variantCounts, setVariantCounts] = useState<Record<string, number>>({})
   const [variantSkus, setVariantSkus] = useState<Record<string, string[]>>({})
   const [filters, setFilters] = useState<ProductFilters>({ search: '', category: '', productType: '', publication: 'all', stock: 'all', sort: 'newest' })
   const stockSaveLock = useRef<string | null>(null)
   const priceSaveLock = useRef<string | null>(null)
+  const categorySaveLock = useRef<string | null>(null)
 
   const loadProducts = useCallback(async () => {
     setLoading(true)
@@ -288,6 +294,70 @@ export function ProductsTable() {
     }
   }
 
+  function startEditingCategory(product: Product) {
+    setError(null)
+    setNotice(null)
+    setCategoryDrafts((current) => ({ ...current, [product.id]: product.category }))
+    setCategoryTypeDrafts((current) => ({ ...current, [product.id]: isGelBlasterType(product.product_type) ? product.product_type : '' }))
+    setEditingCategoryId(product.id)
+  }
+
+  function cancelEditingCategory(product: Product) {
+    setCategoryDrafts((current) => ({ ...current, [product.id]: product.category }))
+    setCategoryTypeDrafts((current) => ({ ...current, [product.id]: isGelBlasterType(product.product_type) ? product.product_type : '' }))
+    setEditingCategoryId(null)
+    setError(null)
+  }
+
+  function updateCategoryDraft(product: Product, category: string) {
+    setCategoryDrafts((current) => ({ ...current, [product.id]: category }))
+    if (!isGelBlasterCategory(category)) setCategoryTypeDrafts((current) => ({ ...current, [product.id]: '' }))
+  }
+
+  async function saveCategory(product: Product, category: string, productType: GelBlasterType | '') {
+    if (savingCategoryId === product.id || categorySaveLock.current === product.id) return
+    if (!categories.includes(category)) {
+      setError('Choose a valid category before saving.')
+      return
+    }
+    if (isGelBlasterCategory(category) && !isGelBlasterType(productType)) {
+      setError('Choose a Gel Blaster Type before saving this category.')
+      return
+    }
+
+    const nextProductType = isGelBlasterCategory(category) ? productType : null
+    if (category === product.category && nextProductType === product.product_type) {
+      cancelEditingCategory(product)
+      return
+    }
+
+    categorySaveLock.current = product.id
+    setSavingCategoryId(product.id)
+    setError(null)
+    setNotice(null)
+    try {
+      await requireAdminSession()
+      const { data, error: updateError } = await supabase
+        .from('products')
+        .update({ category, product_type: nextProductType, updated_at: new Date().toISOString() })
+        .eq('id', product.id)
+        .select('id,category,product_type')
+        .single()
+      if (updateError || !data) throw updateError ?? new Error('Category update did not return a product.')
+      setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id ? { ...currentProduct, category: data.category, product_type: data.product_type } : currentProduct))
+      setCategoryDrafts((current) => ({ ...current, [product.id]: data.category }))
+      setCategoryTypeDrafts((current) => ({ ...current, [product.id]: isGelBlasterType(data.product_type) ? data.product_type : '' }))
+      setEditingCategoryId(null)
+      markWebsiteChangesUnpublished()
+      setNotice('Category saved. Publish the website to update the public storefront.')
+    } catch (caught) {
+      setError(`Category for ${product.name} was not saved. ${caught instanceof Error ? caught.message : 'Please try again.'}`)
+    } finally {
+      categorySaveLock.current = null
+      setSavingCategoryId(null)
+    }
+  }
+
   function stockStatus(stock: number) {
     if (stock >= 5) return { label: 'In Stock', tone: styles.stockHealthy }
     if (stock >= 3) return { label: 'Low Stock', tone: styles.stockLow }
@@ -295,7 +365,12 @@ export function ProductsTable() {
     return { label: 'Out of Stock', tone: styles.stockOut }
   }
 
-  const categories = useMemo(() => Array.from(new Set(products.map((product) => product.category))).sort((first, second) => first.localeCompare(second)), [products])
+  const categories = useMemo(() => {
+    const existingCategories = Array.from(new Set(products.map((product) => product.category)))
+      .filter((category) => !productCategoryOptions.includes(category as typeof productCategoryOptions[number]))
+      .sort((first, second) => first.localeCompare(second))
+    return [...productCategoryOptions, ...existingCategories]
+  }, [products])
   const visibleProducts = useMemo(() => {
     const query = filters.search.trim().toLocaleLowerCase()
     const filtered = products.filter((product) => {
@@ -358,14 +433,18 @@ export function ProductsTable() {
         const stockIsSaving = savingStockId === product.id
         const priceIsSaving = savingPriceId === product.id
         const priceIsEditing = editingPriceId === product.id
+        const categoryIsSaving = savingCategoryId === product.id
+        const categoryIsEditing = editingCategoryId === product.id
         const stockInfo = stockStatus(product.stock)
         const stockDraft = stockDrafts[product.id] ?? String(product.stock)
         const priceDraft = priceDrafts[product.id] ?? String(Number(product.price))
+        const categoryDraft = categoryDrafts[product.id] ?? product.category
+        const categoryTypeDraft = categoryTypeDrafts[product.id] ?? (isGelBlasterType(product.product_type) ? product.product_type : '')
         return <tr key={product.id}>
           <td>{product.image_urls[0] ? <img className={styles.tableImage} src={product.image_urls[0]} alt="" /> : <div className={styles.thumbnail}>Image</div>}</td>
           <td>{product.name}</td>
           <td className={styles.placeholderText}>{product.brand ?? '—'}</td>
-          <td>{product.category}</td>
+          <td>{categoryIsEditing ? <div className={styles.categoryEditor}><select aria-label={`${product.name} category`} value={categoryDraft} disabled={categoryIsSaving} onChange={(event) => updateCategoryDraft(product, event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCategory(product, categoryDraft, categoryTypeDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingCategory(product) } }}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select>{isGelBlasterCategory(categoryDraft) && <select aria-label={`${product.name} Gel Blaster Type`} value={categoryTypeDraft} disabled={categoryIsSaving} onChange={(event) => setCategoryTypeDrafts((current) => ({ ...current, [product.id]: event.target.value as GelBlasterType | '' }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCategory(product, categoryDraft, categoryTypeDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingCategory(product) } }}><option value="">Select Type</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select>}<div><button type="button" disabled={categoryIsSaving} onClick={() => void saveCategory(product, categoryDraft, categoryTypeDraft)}>{categoryIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={categoryIsSaving} onClick={() => cancelEditingCategory(product)}>Cancel</button></div></div> : <div className={styles.categoryDisplay}><span>{product.category}</span><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} category`} title="Quick edit category" onClick={() => startEditingCategory(product)}>✎</button></div>}</td>
           <td>{product.has_variants ? <div className={styles.variantPriceSummary}><strong>From {formatPrice(product.price)}</strong><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Edit Variant Prices</a></div> : priceIsEditing ? <div className={styles.priceEditor}><input aria-label={`${product.name} price`} type="text" inputMode="decimal" value={priceDraft} disabled={priceIsSaving} onChange={(event) => setPriceDrafts((current) => ({ ...current, [product.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void savePrice(product, priceDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingPrice(product) } }} /><div><button type="button" disabled={priceIsSaving} onClick={() => void savePrice(product, priceDraft)}>{priceIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={priceIsSaving} onClick={() => cancelEditingPrice(product)}>Cancel</button></div></div> : <div className={styles.priceDisplay}><strong>{formatPrice(product.price)}</strong><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} price`} title="Quick edit price" onClick={() => startEditingPrice(product)}>✎</button></div>}</td>
           <td>{product.has_variants ? <div className={styles.variantStockSummary}><span>{variantCounts[product.id] ?? 0} Variant{variantCounts[product.id] === 1 ? '' : 's'}</span><strong>{product.stock} total</strong><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Manage Variants</a></div> : <div className={styles.stockControl}><div><button type="button" aria-label={`Decrease ${product.name} stock`} disabled={stockIsSaving || product.stock === 0} onClick={() => void saveStock(product, String(product.stock - 1))}>−</button><input aria-label={`${product.name} stock`} inputMode="numeric" pattern="[0-9]*" value={stockDraft} disabled={stockIsSaving} onChange={(event) => setStockDrafts((current) => ({ ...current, [product.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveStock(product, stockDraft) } if (event.key === 'Escape') { event.preventDefault(); setStockDrafts((current) => ({ ...current, [product.id]: String(product.stock) })); event.currentTarget.blur() } }} onBlur={() => { if (stockDraft !== String(product.stock)) void saveStock(product, stockDraft) }} /><button type="button" aria-label={`Increase ${product.name} stock`} disabled={stockIsSaving} onClick={() => void saveStock(product, String(product.stock + 1))}>+</button></div><span className={stockInfo.tone}>{stockIsSaving ? 'Saving…' : stockInfo.label}</span></div>}</td>
           <td><span className={styles.status}>{statusLabel(product.status)}</span></td>
