@@ -1,19 +1,22 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
 import { deleteProductImages } from '../../lib/supabase/product-images'
 import { fetchAdminProducts } from '../../lib/supabase/products'
 import { markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
+import { GEL_BLASTER_TYPES, gelBlasterTypeFilterLabels, isGelBlasterCategory, type GelBlasterType } from '../../lib/products/product-types'
 import styles from './admin.module.css'
 
 type Product = {
   id: string
   name: string
+  slug: string
   brand: string | null
   category: string
+  product_type: string | null
   price: number | string
   stock: number
   status: 'draft' | 'in_stock' | 'out_of_stock' | 'preorder'
@@ -21,6 +24,17 @@ type Product = {
   is_active: boolean
   image_urls: string[]
   has_variants: boolean
+  created_at: string
+  updated_at: string | null
+}
+
+type ProductFilters = {
+  search: string
+  category: string
+  productType: GelBlasterType | ''
+  publication: 'all' | 'published' | 'inactive'
+  stock: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock'
+  sort: 'newest' | 'updated' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc'
 }
 
 const columns = ['Thumbnail', 'Product Name', 'Brand', 'Category', 'Price', 'Stock', 'Status', 'Active', 'Featured', 'Actions']
@@ -43,6 +57,8 @@ export function ProductsTable() {
   const [savingPriceId, setSavingPriceId] = useState<string | null>(null)
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
   const [variantCounts, setVariantCounts] = useState<Record<string, number>>({})
+  const [variantSkus, setVariantSkus] = useState<Record<string, string[]>>({})
+  const [filters, setFilters] = useState<ProductFilters>({ search: '', category: '', productType: '', publication: 'all', stock: 'all', sort: 'newest' })
   const stockSaveLock = useRef<string | null>(null)
   const priceSaveLock = useRef<string | null>(null)
 
@@ -57,14 +73,23 @@ export function ProductsTable() {
       if (productIds.length > 0) {
         const { data: variantRows, error: variantError } = await supabase
           .from('product_variants')
-          .select('product_id')
+          .select('product_id,sku')
           .in('product_id', productIds)
         if (variantError) variantLoadError = variantError.message
-        else setVariantCounts((variantRows ?? []).reduce<Record<string, number>>((counts, row) => {
-          counts[row.product_id] = (counts[row.product_id] ?? 0) + 1
-          return counts
-        }, {}))
-      } else setVariantCounts({})
+        else {
+          setVariantCounts((variantRows ?? []).reduce<Record<string, number>>((counts, row) => {
+            counts[row.product_id] = (counts[row.product_id] ?? 0) + 1
+            return counts
+          }, {}))
+          setVariantSkus((variantRows ?? []).reduce<Record<string, string[]>>((skus, row) => {
+            if (row.sku?.trim()) skus[row.product_id] = [...(skus[row.product_id] ?? []), row.sku]
+            return skus
+          }, {}))
+        }
+      } else {
+        setVariantCounts({})
+        setVariantSkus({})
+      }
       setError(variantLoadError)
     }
     setLoading(false)
@@ -270,13 +295,63 @@ export function ProductsTable() {
     return { label: 'Out of Stock', tone: styles.stockOut }
   }
 
+  const categories = useMemo(() => Array.from(new Set(products.map((product) => product.category))).sort((first, second) => first.localeCompare(second)), [products])
+  const visibleProducts = useMemo(() => {
+    const query = filters.search.trim().toLocaleLowerCase()
+    const filtered = products.filter((product) => {
+      const matchesSearch = !query || [product.name, product.brand ?? '', product.slug, ...(variantSkus[product.id] ?? [])]
+        .some((value) => value.toLocaleLowerCase().includes(query))
+      const matchesCategory = !filters.category || product.category === filters.category
+      const matchesType = !filters.productType || product.product_type === filters.productType
+      const matchesPublication = filters.publication === 'all' || (filters.publication === 'published' ? product.is_active : !product.is_active)
+      const matchesStock = filters.stock === 'all'
+        || (filters.stock === 'in-stock' && product.stock >= 5)
+        || (filters.stock === 'low-stock' && product.stock >= 1 && product.stock <= 4)
+        || (filters.stock === 'out-of-stock' && product.stock === 0)
+      return matchesSearch && matchesCategory && matchesType && matchesPublication && matchesStock
+    })
+
+    return [...filtered].sort((first, second) => {
+      if (filters.sort === 'updated') return new Date(second.updated_at ?? second.created_at).getTime() - new Date(first.updated_at ?? first.created_at).getTime()
+      if (filters.sort === 'name-asc') return first.name.localeCompare(second.name)
+      if (filters.sort === 'name-desc') return second.name.localeCompare(first.name)
+      if (filters.sort === 'price-asc') return Number(first.price) - Number(second.price)
+      if (filters.sort === 'price-desc') return Number(second.price) - Number(first.price)
+      return new Date(second.created_at).getTime() - new Date(first.created_at).getTime()
+    })
+  }, [filters, products, variantSkus])
+
+  function updateFilter<K extends keyof ProductFilters>(field: K, value: ProductFilters[K]) {
+    setFilters((current) => ({ ...current, [field]: value }))
+  }
+
+  function updateCategoryFilter(category: string) {
+    setFilters((current) => ({ ...current, category, productType: isGelBlasterCategory(category) ? current.productType : '' }))
+  }
+
+  function clearFilters() {
+    setFilters({ search: '', category: '', productType: '', publication: 'all', stock: 'all', sort: 'newest' })
+  }
+
   return (
     <section className={styles.panel}>
-      <div className={styles.panelHeader}><h2>All products</h2><span>{loading ? 'Loading products…' : `${products.length} product${products.length === 1 ? '' : 's'}`}</span></div>
+      <div className={styles.panelHeader}><h2>All products</h2><span>{loading ? 'Loading products…' : `${visibleProducts.length} of ${products.length} product${products.length === 1 ? '' : 's'}`}</span></div>
       {notice && <p className={styles.successMessage} role="status">{notice}</p>}
       {error && <p className={styles.errorMessage} role="alert">{error}</p>}
       {!loading && !error && products.length === 0 && <div className={styles.emptyState}>No products found yet.</div>}
-      {!loading && !error && products.length > 0 && <div className={styles.tableWrap}><table className={styles.table}><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{products.map((product) => {
+      {!loading && !error && products.length > 0 && <>
+        <div className={styles.productFilterToolbar} aria-label="Search and filter products">
+          <label className={styles.productSearch} htmlFor="admin-product-search">Search Products<input id="admin-product-search" type="search" value={filters.search} onChange={(event) => updateFilter('search', event.target.value)} placeholder="Search products..." /></label>
+          <div className={styles.productFilterGrid}>
+            <label>Category<select value={filters.category} onChange={(event) => updateCategoryFilter(event.target.value)}><option value="">All Categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+            {isGelBlasterCategory(filters.category) && <label>Type<select value={filters.productType} onChange={(event) => updateFilter('productType', event.target.value as GelBlasterType | '')}><option value="">All Types</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select></label>}
+            <label>Status<select value={filters.publication} onChange={(event) => updateFilter('publication', event.target.value as ProductFilters['publication'])}><option value="all">All Statuses</option><option value="published">Published</option><option value="inactive">Draft / Inactive</option></select></label>
+            <label>Stock<select value={filters.stock} onChange={(event) => updateFilter('stock', event.target.value as ProductFilters['stock'])}><option value="all">All Stock</option><option value="in-stock">In Stock (5+)</option><option value="low-stock">Low Stock (1–4)</option><option value="out-of-stock">Out of Stock</option></select></label>
+            <label>Sort<select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as ProductFilters['sort'])}><option value="newest">Newest Added</option><option value="updated">Recently Updated</option><option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="price-asc">Price Low–High</option><option value="price-desc">Price High–Low</option></select></label>
+          </div>
+          <button type="button" className={styles.clearProductFilters} onClick={clearFilters}>Clear Filters</button>
+        </div>
+        {visibleProducts.length === 0 ? <div className={styles.emptyState}><div><p>No products found.</p><button type="button" className={styles.tableAction} onClick={clearFilters}>Clear Filters</button></div></div> : <div className={styles.tableWrap}><table className={styles.table}><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{visibleProducts.map((product) => {
         const isWorking = workingId === product.id
         const activeIsUpdating = workingToggle?.id === product.id && workingToggle.field === 'is_active'
         const featuredIsUpdating = workingToggle?.id === product.id && workingToggle.field === 'featured'
@@ -299,6 +374,7 @@ export function ProductsTable() {
           <td><div className={styles.tableActions}><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Edit</a><button className={styles.tableAction} type="button" disabled={isWorking} onClick={() => duplicateProduct(product)}>{isWorking ? 'Working…' : 'Duplicate'}</button><button className={`${styles.tableAction} ${styles.deleteAction}`} type="button" disabled={isWorking} onClick={() => deleteProduct(product)}>{isWorking ? 'Working…' : 'Delete'}</button></div></td>
         </tr>
       })}</tbody></table></div>}
+      </>}
     </section>
   )
 }

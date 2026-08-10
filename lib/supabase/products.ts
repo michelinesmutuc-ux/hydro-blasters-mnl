@@ -1,7 +1,7 @@
 import { supabase } from './client'
 
 export const publicProductColumns = 'id,name,slug,brand,category,product_type,price,stock,status,image_urls,shipping_classification,has_variants,variant_group_name,featured,show_on_homepage,highlight_type,homepage_sort_order,created_at,short_description'
-export const adminProductColumns = 'id,name,slug,brand,category,product_type,price,stock,status,shipping_classification,has_variants,variant_group_name,short_description,description,specifications,image_urls,featured,is_active,show_on_homepage,highlight_type,homepage_sort_order,created_at'
+export const adminProductColumns = 'id,name,slug,brand,category,product_type,price,stock,status,shipping_classification,has_variants,variant_group_name,short_description,description,specifications,image_urls,featured,is_active,show_on_homepage,highlight_type,homepage_sort_order,created_at,updated_at'
 
 export async function fetchActiveProducts(options: { featuredOnly?: boolean; homepageOnly?: boolean } = {}) {
   let query = supabase.from('products').select(publicProductColumns).eq('is_active', true)
