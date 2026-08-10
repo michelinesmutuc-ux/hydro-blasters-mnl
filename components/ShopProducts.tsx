@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { fetchActiveProducts } from '../lib/supabase/products'
 import { ProductCard, type PublicProduct } from './ProductCard'
 import { getProductUrl } from '../lib/products/get-product-url'
@@ -25,8 +26,7 @@ type ShopFilters = {
   sort: SortOption
 }
 
-function filtersFromUrl(): ShopFilters {
-  const params = new URLSearchParams(window.location.search)
+function filtersFromUrl(params: Pick<URLSearchParams, 'get'>): ShopFilters {
   const sort = params.get('sort')
   const validSort: SortOption[] = ['featured', 'newest', 'price-asc', 'price-desc', 'name-asc']
   const category = params.get('category') ?? ''
@@ -54,6 +54,8 @@ function updateShopUrl(filters: ShopFilters) {
 }
 
 export function ShopProducts() {
+  const searchParams = useSearchParams()
+  const searchQuery = searchParams.toString()
   const [products, setProducts] = useState<ShopProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -61,9 +63,9 @@ export function ShopProducts() {
   const [urlReady, setUrlReady] = useState(false)
 
   useEffect(() => {
-    setFilters(filtersFromUrl())
+    setFilters(filtersFromUrl(new URLSearchParams(searchQuery)))
     setUrlReady(true)
-  }, [])
+  }, [searchQuery])
 
   const loadProducts = useCallback(async () => {
     const { data, error: queryError } = await fetchActiveProducts()
