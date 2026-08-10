@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { fetchActiveProducts } from '../lib/supabase/products'
 import { ProductCard, type PublicProduct } from './ProductCard'
@@ -63,8 +63,10 @@ export function ShopProducts() {
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<ShopFilters>(defaultShopFilters)
   const [urlReady, setUrlReady] = useState(false)
+  const isApplyingUrlState = useRef(false)
 
   useEffect(() => {
+    isApplyingUrlState.current = true
     setFilters(filtersFromUrl(new URLSearchParams(searchQuery)))
     setUrlReady(true)
   }, [searchQuery])
@@ -99,7 +101,12 @@ export function ShopProducts() {
   }, [loadProducts])
 
   useEffect(() => {
-    if (urlReady) updateShopUrl(filters)
+    if (!urlReady) return
+    if (isApplyingUrlState.current) {
+      isApplyingUrlState.current = false
+      return
+    }
+    updateShopUrl(filters)
   }, [filters, urlReady])
 
   const categories = useMemo(() => Array.from(new Set(products.map((product) => product.category))).sort((a, b) => a.localeCompare(b)), [products])
