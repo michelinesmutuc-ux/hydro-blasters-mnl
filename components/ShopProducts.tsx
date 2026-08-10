@@ -6,6 +6,8 @@ import { ProductCard, type PublicProduct } from './ProductCard'
 import { getProductUrl } from '../lib/products/get-product-url'
 import { ShopFloatingCheckout } from './ShopFloatingCheckout'
 import { GEL_BLASTER_TYPES, gelBlasterTypeFilterLabels, isGelBlasterCategory, parseGelBlasterType, type GelBlasterType } from '../lib/products/product-types'
+import { sortShopCategories } from '../lib/products/category-order'
+import { ShopCategoryShelf } from './ShopCategoryShelf'
 
 type SortOption = 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'name-asc'
 type ShopProduct = PublicProduct & {
@@ -116,6 +118,21 @@ export function ShopProducts() {
     })
   }, [products, filters])
 
+  const isDefaultShelfMode = !filters.search.trim() && !filters.category && !filters.productType && !filters.brand && !filters.status && filters.sort === 'featured'
+  const categoryShelves = useMemo(() => {
+    const productsByCategory = new Map<string, ShopProduct[]>()
+    for (const product of matchingProducts) {
+      const current = productsByCategory.get(product.category) ?? []
+      current.push(product)
+      productsByCategory.set(product.category, current)
+    }
+
+    return sortShopCategories(Array.from(productsByCategory.keys())).map((category) => ({
+      category,
+      products: productsByCategory.get(category) ?? [],
+    }))
+  }, [matchingProducts])
+
   function updateFilter<K extends keyof ShopFilters>(field: K, value: ShopFilters[K]) {
     setFilters((current) => ({ ...current, [field]: value }))
   }
@@ -145,7 +162,7 @@ export function ShopProducts() {
       <button className="clear-filters" type="button" onClick={clearAllFilters}>Clear all filters</button>
     </div>
     <div className="shop-filter-status"><span>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}{filters.category ? ` in ${filters.category}` : ''}</span></div>
-    {matchingProducts.length > 0 ? <div className="product-grid">{matchingProducts.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <div className="catalogue-state">No active products match your current search and filters. Try clearing a filter or searching for something else.</div>}
+    {matchingProducts.length > 0 ? isDefaultShelfMode ? <div className="shop-category-shelves">{categoryShelves.map((shelf) => <ShopCategoryShelf category={shelf.category} products={shelf.products} key={shelf.category} />)}</div> : <div className="product-grid">{matchingProducts.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <div className="catalogue-state">No active products match your current search and filters. Try clearing a filter or searching for something else.</div>}
     <ShopFloatingCheckout />
   </div>
 }
