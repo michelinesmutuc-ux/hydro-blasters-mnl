@@ -1,4 +1,4 @@
-export const GEL_BLASTER_TYPES = ['Rifle', 'SMG', 'Pistol', 'Shotgun'] as const
+export const GEL_BLASTER_TYPES = ['Rifle', 'SMG', 'Pistol', 'Shotgun', 'Others'] as const
 
 export type GelBlasterType = typeof GEL_BLASTER_TYPES[number]
 
@@ -7,6 +7,7 @@ export const gelBlasterTypeFilterLabels: Record<GelBlasterType, string> = {
   SMG: 'SMGs',
   Pistol: 'Pistols',
   Shotgun: 'Shotguns',
+  Others: 'Others',
 }
 
 // The catalogue currently stores its broad category as the singular “Gel Blaster”.
