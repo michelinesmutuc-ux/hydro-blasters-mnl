@@ -105,3 +105,8 @@ footer { padding:34px 20px 42px; border-top:1px solid var(--line); }.footer-bran
 @media(min-width:820px){.product-gallery{display:block}.product-gallery .product-specifications{margin-top:30px}.product-detail-copy .product-help-callout{margin-top:34px}}
 
 .specification-boolean{display:inline-flex;align-items:center;gap:7px}.specification-boolean>span{font-size:14px;font-weight:900;line-height:1}.specification-boolean-yes>span{color:var(--cyan)}.specification-boolean-no>span{color:#938da8}
+
+/* A card frame gets its height from aspect-ratio, so make its image fill that
+   definite box before object-fit calculates its contained rendering. */
+.product-image-frame-card{position:relative}
+.product-image-frame-card img{position:absolute;inset:0;width:100%;height:100%}
