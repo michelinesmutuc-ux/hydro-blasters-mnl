@@ -26,6 +26,8 @@ type ShopFilters = {
   sort: SortOption
 }
 
+const defaultShopFilters: ShopFilters = { search: '', category: '', productType: '', brand: '', status: '', sort: 'featured' }
+
 function filtersFromUrl(params: Pick<URLSearchParams, 'get'>): ShopFilters {
   const sort = params.get('sort')
   const validSort: SortOption[] = ['featured', 'newest', 'price-asc', 'price-desc', 'name-asc']
@@ -59,7 +61,7 @@ export function ShopProducts() {
   const [products, setProducts] = useState<ShopProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filters, setFilters] = useState<ShopFilters>({ search: '', category: '', productType: '', brand: '', status: '', sort: 'featured' })
+  const [filters, setFilters] = useState<ShopFilters>(defaultShopFilters)
   const [urlReady, setUrlReady] = useState(false)
 
   useEffect(() => {
@@ -121,6 +123,17 @@ export function ShopProducts() {
   }, [products, filters])
 
   const isDefaultShelfMode = !filters.search.trim() && !filters.category && !filters.productType && !filters.brand && !filters.status && filters.sort === 'featured'
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: 'search' | 'category' | 'productType' | 'brand' | 'status' | 'sort'; label: string }[] = []
+    if (filters.search.trim()) chips.push({ key: 'search', label: `Search: ${filters.search.trim()}` })
+    if (filters.category) chips.push({ key: 'category', label: filters.category })
+    if (filters.productType) chips.push({ key: 'productType', label: filters.productType })
+    if (filters.brand) chips.push({ key: 'brand', label: filters.brand })
+    if (filters.status) chips.push({ key: 'status', label: filters.status.replaceAll('_', ' ') })
+    if (filters.sort !== 'featured') chips.push({ key: 'sort', label: `Sort: ${filters.sort.replaceAll('-', ' ')}` })
+    return chips
+  }, [filters])
+  const filteredResultsTitle = filters.category || (filters.search.trim() ? 'Search results' : 'Filtered products')
   const categoryShelves = useMemo(() => {
     const productsByCategory = new Map<string, ShopProduct[]>()
     for (const product of matchingProducts) {
@@ -144,7 +157,16 @@ export function ShopProducts() {
   }
 
   function clearAllFilters() {
-    setFilters({ search: '', category: '', productType: '', brand: '', status: '', sort: 'featured' })
+    setFilters({ ...defaultShopFilters })
+  }
+
+  function clearSingleFilter(field: 'search' | 'category' | 'productType' | 'brand' | 'status' | 'sort') {
+    setFilters((current) => {
+      if (field === 'category') return { ...current, category: '', productType: '' }
+      if (field === 'productType') return { ...current, productType: '' }
+      if (field === 'sort') return { ...current, sort: 'featured' }
+      return { ...current, [field]: '' }
+    })
   }
 
   if (loading) return <div className="catalogue-state">Loading products…</div>
@@ -155,15 +177,15 @@ export function ShopProducts() {
     <div className="shop-controls" aria-label="Product search and filters">
       <div className="shop-search"><label htmlFor="product-search">Search products</label><div><input id="product-search" type="search" value={filters.search} onChange={(event) => updateFilter('search', event.target.value)} placeholder="Search name, brand, category…" />{filters.search && <button type="button" onClick={() => updateFilter('search', '')}>Clear search</button>}</div></div>
       <div className="shop-filter-grid">
-        <label>Category<select value={filters.category} onChange={(event) => updateCategory(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
-        {isGelBlasterCategory(filters.category) && <label>Type<select value={filters.productType} onChange={(event) => updateFilter('productType', event.target.value as GelBlasterType | '')}><option value="">All</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select></label>}
-        <label>Brand<select value={filters.brand} onChange={(event) => updateFilter('brand', event.target.value)}><option value="">All brands</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select></label>
-        <label>Status<select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}><option value="">All statuses</option>{statuses.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select></label>
-        <label>Sort<select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as SortOption)}><option value="featured">Featured first</option><option value="newest">Newest</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="name-asc">Name: A to Z</option></select></label>
+        <label className={filters.category ? 'shop-filter-field-active' : undefined}>Category<select value={filters.category} onChange={(event) => updateCategory(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+        {isGelBlasterCategory(filters.category) && <label className={filters.productType ? 'shop-filter-field-active' : undefined}>Type<select value={filters.productType} onChange={(event) => updateFilter('productType', event.target.value as GelBlasterType | '')}><option value="">All</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select></label>}
+        <label className={filters.brand ? 'shop-filter-field-active' : undefined}>Brand<select value={filters.brand} onChange={(event) => updateFilter('brand', event.target.value)}><option value="">All brands</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select></label>
+        <label className={filters.status ? 'shop-filter-field-active' : undefined}>Status<select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}><option value="">All statuses</option>{statuses.map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}</select></label>
+        <label className={filters.sort !== 'featured' ? 'shop-filter-field-active' : undefined}>Sort<select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as SortOption)}><option value="featured">Featured first</option><option value="newest">Newest</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="name-asc">Name: A to Z</option></select></label>
       </div>
       <button className="clear-filters" type="button" onClick={clearAllFilters}>Clear all filters</button>
     </div>
-    <div className="shop-filter-status"><span>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}{filters.category ? ` in ${filters.category}` : ''}</span></div>
+    {!isDefaultShelfMode ? <section className="shop-filtered-state" aria-label="Active shop filters"><div className="shop-filtered-state-heading"><div><p className="eyebrow">Filtered products</p><h2>{filteredResultsTitle}</h2><p>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}</p></div><button type="button" onClick={clearAllFilters}>← Back to all categories</button></div>{activeFilterChips.length > 0 && <div className="shop-active-filter-chips" aria-label="Active filters">{activeFilterChips.map((chip) => <button type="button" key={chip.key} onClick={() => clearSingleFilter(chip.key)}>{chip.label} <span aria-hidden="true">×</span><span className="sr-only">Remove filter</span></button>)}</div>}</section> : <div className="shop-filter-status"><span>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}</span></div>}
     {matchingProducts.length > 0 ? isDefaultShelfMode ? <div className="shop-category-shelves">{categoryShelves.map((shelf) => <ShopCategoryShelf category={shelf.category} products={shelf.products} key={shelf.category} />)}</div> : <div className="product-grid">{matchingProducts.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <div className="catalogue-state">No active products match your current search and filters. Try clearing a filter or searching for something else.</div>}
     <ShopFloatingCheckout />
   </div>
