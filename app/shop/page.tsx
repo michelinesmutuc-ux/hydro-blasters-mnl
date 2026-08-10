@@ -6,6 +6,7 @@ import { JsonLd } from '../../components/JsonLd'
 import { breadcrumbStructuredData } from '../../lib/seo/structured-data'
 import { PrimaryNavigation } from '../../components/PrimaryNavigation'
 import { AnnouncementBar } from '../../components/AnnouncementBar'
+import { Suspense } from 'react'
 
 export const metadata = createPageMetadata({ title: 'Shop Gel Blasters | Hydro Blasters MNL', description: 'Browse beginner-friendly and upgradeable gel blasters, accessories, and magazines from Hydro Blasters MNL.', path: '/shop' })
 
@@ -22,7 +23,7 @@ export default function ShopPage() {
       <main>
         <section className="section shop-section">
           <div className="section-heading"><p className="eyebrow">Product catalogue</p><h1>Shop</h1><p className="shop-intro">Browse currently active products from Hydro Blasters MNL.</p></div>
-          <ShopProducts />
+          <Suspense fallback={<div className="catalogue-state">Loading products…</div>}><ShopProducts /></Suspense>
         </section>
       </main>
       <SiteFooter />
