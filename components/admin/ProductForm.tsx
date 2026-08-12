@@ -528,7 +528,7 @@ export function ProductForm({ mode }: ProductFormProps) {
             <span className={styles.fieldLegend}>Product Highlights</span>
             <div className={styles.toggleRow}>
               <label className={styles.toggle}><span><strong>Featured</strong><span>Include in the Featured highlight filter.</span></span><input className={styles.switch} type="checkbox" checked={draft.featured} onChange={(event) => update('featured', event.target.checked)} /></label>
-              <label className={styles.toggle}><span><strong>Clearance Sale</strong><span>Excludes this product from Launch Promo.</span></span><input className={styles.switch} type="checkbox" checked={draft.isClearance} onChange={(event) => update('isClearance', event.target.checked)} /></label>
+              <label className={styles.toggle}><span><strong>Clearance Sale</strong><span>Automatically excludes this product from Launch Promo.</span></span><input className={styles.switch} type="checkbox" checked={draft.isClearance} onChange={(event) => update('isClearance', event.target.checked)} /></label>
               <label className={styles.toggle}><span><strong>Best Seller</strong><span>Include in the Best Seller highlight filter.</span></span><input className={styles.switch} type="checkbox" checked={draft.isBestSeller} onChange={(event) => update('isBestSeller', event.target.checked)} /></label>
             </div>
           </div>
