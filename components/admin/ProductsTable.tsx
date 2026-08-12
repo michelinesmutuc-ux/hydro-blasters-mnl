@@ -23,6 +23,8 @@ type Product = {
   stock: number
   status: 'draft' | 'in_stock' | 'out_of_stock' | 'preorder'
   featured: boolean
+  is_clearance: boolean
+  is_best_seller: boolean
   is_active: boolean
   image_urls: string[]
   has_variants: boolean
@@ -36,13 +38,15 @@ type ProductFilters = {
   category: string
   productType: GelBlasterType | ''
   publication: 'all' | 'published' | 'inactive'
+  highlight: 'all' | 'clearance_sale' | 'best_seller' | 'featured'
   stock: 'all' | 'in-stock' | 'low-stock' | 'out-of-stock'
   sort: 'newest' | 'updated' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc'
 }
 
 type QuickProductStatus = 'in_stock' | 'draft'
+type ProductHighlightDraft = { is_clearance: boolean; is_best_seller: boolean; featured: boolean }
 
-const columns = ['Thumbnail', 'Product Name', 'Brand', 'Category', 'Shipping Class', 'Price', 'Stock', 'Product Status', 'Featured', 'Actions']
+const columns = ['Thumbnail', 'Product Name', 'Brand', 'Category', 'Shipping Class', 'Price', 'Stock', 'Product Status', 'Highlights', 'Actions']
 
 function quickStatusForProduct(product: Product): QuickProductStatus {
   return product.is_active ? 'in_stock' : 'draft'
@@ -59,7 +63,6 @@ export function ProductsTable() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [workingId, setWorkingId] = useState<string | null>(null)
-  const [workingToggle, setWorkingToggle] = useState<{ id: string; field: 'is_active' | 'featured' } | null>(null)
   const [savingStockId, setSavingStockId] = useState<string | null>(null)
   const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({})
   const [editingPriceId, setEditingPriceId] = useState<string | null>(null)
@@ -75,14 +78,18 @@ export function ProductsTable() {
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null)
   const [savingStatusId, setSavingStatusId] = useState<string | null>(null)
   const [statusDrafts, setStatusDrafts] = useState<Record<string, QuickProductStatus>>({})
+  const [editingHighlightsId, setEditingHighlightsId] = useState<string | null>(null)
+  const [savingHighlightsId, setSavingHighlightsId] = useState<string | null>(null)
+  const [highlightDrafts, setHighlightDrafts] = useState<Record<string, ProductHighlightDraft>>({})
   const [variantCounts, setVariantCounts] = useState<Record<string, number>>({})
   const [variantSkus, setVariantSkus] = useState<Record<string, string[]>>({})
-  const [filters, setFilters] = useState<ProductFilters>({ search: '', category: '', productType: '', publication: 'all', stock: 'all', sort: 'newest' })
+  const [filters, setFilters] = useState<ProductFilters>({ search: '', category: '', productType: '', publication: 'all', highlight: 'all', stock: 'all', sort: 'newest' })
   const stockSaveLock = useRef<string | null>(null)
   const priceSaveLock = useRef<string | null>(null)
   const categorySaveLock = useRef<string | null>(null)
   const shippingClassSaveLock = useRef<string | null>(null)
   const statusSaveLock = useRef<string | null>(null)
+  const highlightsSaveLock = useRef<string | null>(null)
 
   const loadProducts = useCallback(async () => {
     setLoading(true)
@@ -174,36 +181,6 @@ export function ProductsTable() {
     } finally {
       setWorkingId(null)
     }
-  }
-
-  async function toggleProductField(product: Product, field: 'is_active' | 'featured') {
-    const previousValue = product[field]
-    const nextValue = !previousValue
-    setWorkingToggle({ id: product.id, field })
-    setError(null)
-    setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id ? { ...currentProduct, [field]: nextValue } : currentProduct))
-
-    try {
-      await requireAdminSession()
-    } catch (authError) {
-      setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id ? { ...currentProduct, [field]: previousValue } : currentProduct))
-      setError(authError instanceof Error ? authError.message : 'Administrator access is required.')
-      setWorkingToggle(null)
-      return
-    }
-
-    const { error: updateError } = await supabase
-      .from('products')
-      .update({ [field]: nextValue, updated_at: new Date().toISOString() })
-      .eq('id', product.id)
-
-    if (updateError) {
-      setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id ? { ...currentProduct, [field]: previousValue } : currentProduct))
-      setError(`Could not update ${field === 'is_active' ? 'Active' : 'Featured'} for ${product.name}. ${updateError.message}`)
-    } else {
-      markWebsiteChangesUnpublished()
-    }
-    setWorkingToggle(null)
   }
 
   async function saveStock(product: Product, draft: string) {
@@ -441,6 +418,61 @@ export function ProductsTable() {
     }
   }
 
+  function highlightDraftForProduct(product: Product): ProductHighlightDraft {
+    return { is_clearance: Boolean(product.is_clearance), is_best_seller: Boolean(product.is_best_seller), featured: Boolean(product.featured) }
+  }
+
+  function startEditingHighlights(product: Product) {
+    setError(null)
+    setNotice(null)
+    setHighlightDrafts((current) => ({ ...current, [product.id]: highlightDraftForProduct(product) }))
+    setEditingHighlightsId(product.id)
+  }
+
+  function cancelEditingHighlights(product: Product) {
+    setHighlightDrafts((current) => ({ ...current, [product.id]: highlightDraftForProduct(product) }))
+    setEditingHighlightsId(null)
+    setError(null)
+  }
+
+  async function saveHighlights(product: Product, draft: ProductHighlightDraft) {
+    if (savingHighlightsId === product.id || highlightsSaveLock.current === product.id) return
+    const current = highlightDraftForProduct(product)
+    if (draft.is_clearance === current.is_clearance && draft.is_best_seller === current.is_best_seller && draft.featured === current.featured) {
+      cancelEditingHighlights(product)
+      return
+    }
+
+    highlightsSaveLock.current = product.id
+    setSavingHighlightsId(product.id)
+    setError(null)
+    setNotice(null)
+    try {
+      await requireAdminSession()
+      const { data, error: updateError } = await supabase
+        .from('products')
+        .update({ ...draft, updated_at: new Date().toISOString() })
+        .eq('id', product.id)
+        .select('id,is_clearance,is_best_seller,featured')
+        .single()
+      if (updateError || !data) throw updateError ?? new Error('Product highlights update did not return a product.')
+
+      setProducts((currentProducts) => currentProducts.map((currentProduct) => currentProduct.id === product.id
+        ? { ...currentProduct, is_clearance: data.is_clearance, is_best_seller: data.is_best_seller, featured: data.featured }
+        : currentProduct))
+      setHighlightDrafts((currentDrafts) => ({ ...currentDrafts, [product.id]: { is_clearance: data.is_clearance, is_best_seller: data.is_best_seller, featured: data.featured } }))
+      setEditingHighlightsId(null)
+      markWebsiteChangesUnpublished()
+      setNotice('Product highlights saved. Publish the website to update the public storefront.')
+    } catch (caught) {
+      setHighlightDrafts((currentDrafts) => ({ ...currentDrafts, [product.id]: highlightDraftForProduct(product) }))
+      setError(`Highlights for ${product.name} were not saved. ${caught instanceof Error ? caught.message : 'Please try again.'}`)
+    } finally {
+      highlightsSaveLock.current = null
+      setSavingHighlightsId(null)
+    }
+  }
+
   function stockStatus(stock: number) {
     if (stock >= 5) return { label: 'In Stock', tone: styles.stockHealthy }
     if (stock >= 3) return { label: 'Low Stock', tone: styles.stockLow }
@@ -462,11 +494,15 @@ export function ProductsTable() {
       const matchesCategory = !filters.category || product.category === filters.category
       const matchesType = !filters.productType || product.product_type === filters.productType
       const matchesPublication = filters.publication === 'all' || (filters.publication === 'published' ? product.is_active : !product.is_active)
+      const matchesHighlight = filters.highlight === 'all'
+        || (filters.highlight === 'clearance_sale' && product.is_clearance)
+        || (filters.highlight === 'best_seller' && product.is_best_seller)
+        || (filters.highlight === 'featured' && product.featured)
       const matchesStock = filters.stock === 'all'
         || (filters.stock === 'in-stock' && product.stock >= 5)
         || (filters.stock === 'low-stock' && product.stock >= 1 && product.stock <= 4)
         || (filters.stock === 'out-of-stock' && product.stock === 0)
-      return matchesSearch && matchesCategory && matchesType && matchesPublication && matchesStock
+      return matchesSearch && matchesCategory && matchesType && matchesPublication && matchesHighlight && matchesStock
     })
 
     return [...filtered].sort((first, second) => {
@@ -488,7 +524,7 @@ export function ProductsTable() {
   }
 
   function clearFilters() {
-    setFilters({ search: '', category: '', productType: '', publication: 'all', stock: 'all', sort: 'newest' })
+    setFilters({ search: '', category: '', productType: '', publication: 'all', highlight: 'all', stock: 'all', sort: 'newest' })
   }
 
   return (
@@ -504,6 +540,7 @@ export function ProductsTable() {
             <label>Category<select value={filters.category} onChange={(event) => updateCategoryFilter(event.target.value)}><option value="">All Categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
             {isGelBlasterCategory(filters.category) && <label>Type<select value={filters.productType} onChange={(event) => updateFilter('productType', event.target.value as GelBlasterType | '')}><option value="">All Types</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select></label>}
             <label>Status<select value={filters.publication} onChange={(event) => updateFilter('publication', event.target.value as ProductFilters['publication'])}><option value="all">All Statuses</option><option value="published">In Stock</option><option value="inactive">Draft</option></select></label>
+            <label>Highlights<select value={filters.highlight} onChange={(event) => updateFilter('highlight', event.target.value as ProductFilters['highlight'])}><option value="all">All Highlights</option><option value="clearance_sale">Clearance Sale</option><option value="best_seller">Best Seller</option><option value="featured">Featured</option></select></label>
             <label>Stock<select value={filters.stock} onChange={(event) => updateFilter('stock', event.target.value as ProductFilters['stock'])}><option value="all">All Stock</option><option value="in-stock">In Stock (5+)</option><option value="low-stock">Low Stock (1–4)</option><option value="out-of-stock">Out of Stock</option></select></label>
             <label>Sort<select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as ProductFilters['sort'])}><option value="newest">Newest Added</option><option value="updated">Recently Updated</option><option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="price-asc">Price Low–High</option><option value="price-desc">Price High–Low</option></select></label>
           </div>
@@ -511,7 +548,6 @@ export function ProductsTable() {
         </div>
         {visibleProducts.length === 0 ? <div className={styles.emptyState}><div><p>No products found.</p><button type="button" className={styles.tableAction} onClick={clearFilters}>Clear Filters</button></div></div> : <div className={styles.tableWrap}><table className={styles.table}><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{visibleProducts.map((product) => {
         const isWorking = workingId === product.id
-        const featuredIsUpdating = workingToggle?.id === product.id && workingToggle.field === 'featured'
         const stockIsSaving = savingStockId === product.id
         const priceIsSaving = savingPriceId === product.id
         const priceIsEditing = editingPriceId === product.id
@@ -528,6 +564,10 @@ export function ProductsTable() {
         const statusIsEditing = editingStatusId === product.id
         const statusIsSaving = savingStatusId === product.id
         const statusDraft = statusDrafts[product.id] ?? quickStatusForProduct(product)
+        const highlightsIsEditing = editingHighlightsId === product.id
+        const highlightsIsSaving = savingHighlightsId === product.id
+        const highlightsDraft = highlightDrafts[product.id] ?? highlightDraftForProduct(product)
+        const highlightLabels = [product.is_clearance ? 'Clearance' : '', product.is_best_seller ? 'Best Seller' : '', product.featured ? 'Featured' : ''].filter(Boolean)
         return <tr key={product.id}>
           <td>{product.image_urls[0] ? <img className={styles.tableImage} src={product.image_urls[0]} alt="" /> : <div className={styles.thumbnail}>Image</div>}</td>
           <td>{product.name}</td>
@@ -537,7 +577,7 @@ export function ProductsTable() {
           <td>{product.has_variants ? <div className={styles.variantPriceSummary}><strong>From {formatPrice(product.price)}</strong><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Edit Variant Prices</a></div> : priceIsEditing ? <div className={styles.priceEditor}><input aria-label={`${product.name} price`} type="text" inputMode="decimal" value={priceDraft} disabled={priceIsSaving} onChange={(event) => setPriceDrafts((current) => ({ ...current, [product.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void savePrice(product, priceDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingPrice(product) } }} /><div><button type="button" disabled={priceIsSaving} onClick={() => void savePrice(product, priceDraft)}>{priceIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={priceIsSaving} onClick={() => cancelEditingPrice(product)}>Cancel</button></div></div> : <div className={styles.priceDisplay}><strong>{formatPrice(product.price)}</strong><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} price`} title="Quick edit price" onClick={() => startEditingPrice(product)}>✎</button></div>}</td>
           <td>{product.has_variants ? <div className={styles.variantStockSummary}><span>{variantCounts[product.id] ?? 0} Variant{variantCounts[product.id] === 1 ? '' : 's'}</span><strong>{product.stock} total</strong><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Manage Variants</a></div> : <div className={styles.stockControl}><div><button type="button" aria-label={`Decrease ${product.name} stock`} disabled={stockIsSaving || product.stock === 0} onClick={() => void saveStock(product, String(product.stock - 1))}>−</button><input aria-label={`${product.name} stock`} inputMode="numeric" pattern="[0-9]*" value={stockDraft} disabled={stockIsSaving} onChange={(event) => setStockDrafts((current) => ({ ...current, [product.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveStock(product, stockDraft) } if (event.key === 'Escape') { event.preventDefault(); setStockDrafts((current) => ({ ...current, [product.id]: String(product.stock) })); event.currentTarget.blur() } }} onBlur={() => { if (stockDraft !== String(product.stock)) void saveStock(product, stockDraft) }} /><button type="button" aria-label={`Increase ${product.name} stock`} disabled={stockIsSaving} onClick={() => void saveStock(product, String(product.stock + 1))}>+</button></div><span className={stockInfo.tone}>{stockIsSaving ? 'Saving…' : stockInfo.label}</span></div>}</td>
           <td>{statusIsEditing ? <div className={styles.categoryEditor}><select aria-label={`${product.name} Product Status`} value={statusDraft} disabled={statusIsSaving} onChange={(event) => setStatusDrafts((current) => ({ ...current, [product.id]: event.target.value as QuickProductStatus }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveStatus(product, statusDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingStatus(product) } }}><option value="in_stock">IN STOCK</option><option value="draft">DRAFT</option></select><div><button type="button" disabled={statusIsSaving} onClick={() => void saveStatus(product, statusDraft)}>{statusIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={statusIsSaving} onClick={() => cancelEditingStatus(product)}>Cancel</button></div></div> : <div className={styles.categoryDisplay}><span className={`${styles.status} ${product.is_active ? styles.statusActive : ''}`}>{quickStatusLabel(quickStatusForProduct(product))}</span><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} Product Status`} title="Quick edit Product Status" disabled={isWorking} onClick={() => startEditingStatus(product)}>✎</button></div>}</td>
-          <td><button type="button" className={`${styles.quickToggle} ${product.featured ? styles.quickToggleOn : ''}`} aria-pressed={product.featured} aria-label={`${product.featured ? 'Remove' : 'Set'} ${product.name} as featured`} disabled={isWorking || featuredIsUpdating} onClick={() => toggleProductField(product, 'featured')}><span aria-hidden="true" />{featuredIsUpdating ? 'Saving…' : product.featured ? 'Featured' : 'Not featured'}</button></td>
+          <td>{highlightsIsEditing ? <div className={styles.highlightsEditor}><label><input type="checkbox" checked={highlightsDraft.is_clearance} disabled={highlightsIsSaving} onChange={(event) => setHighlightDrafts((current) => ({ ...current, [product.id]: { ...highlightsDraft, is_clearance: event.target.checked } }))} />Clearance Sale</label><label><input type="checkbox" checked={highlightsDraft.is_best_seller} disabled={highlightsIsSaving} onChange={(event) => setHighlightDrafts((current) => ({ ...current, [product.id]: { ...highlightsDraft, is_best_seller: event.target.checked } }))} />Best Seller</label><label><input type="checkbox" checked={highlightsDraft.featured} disabled={highlightsIsSaving} onChange={(event) => setHighlightDrafts((current) => ({ ...current, [product.id]: { ...highlightsDraft, featured: event.target.checked } }))} />Featured</label><div><button type="button" disabled={highlightsIsSaving} onClick={() => void saveHighlights(product, highlightsDraft)}>{highlightsIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={highlightsIsSaving} onClick={() => cancelEditingHighlights(product)}>Cancel</button></div></div> : <div className={styles.highlightsDisplay}><span className={styles.highlightSummary}>{highlightLabels.length ? highlightLabels.join(' · ') : 'None'}</span><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} highlights`} title="Quick edit highlights" disabled={isWorking} onClick={() => startEditingHighlights(product)}>✎</button></div>}</td>
           <td><div className={styles.tableActions}><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Edit</a><button className={styles.tableAction} type="button" disabled={isWorking} onClick={() => duplicateProduct(product)}>{isWorking ? 'Working…' : 'Duplicate'}</button><button className={`${styles.tableAction} ${styles.deleteAction}`} type="button" disabled={isWorking} onClick={() => deleteProduct(product)}>{isWorking ? 'Working…' : 'Delete'}</button></div></td>
         </tr>
       })}</tbody></table></div>}

@@ -25,6 +25,7 @@ export type PublicProduct = {
   highlight_type?: HomepageHighlightType | null
   homepage_sort_order?: number | null
   is_clearance?: boolean
+  is_best_seller?: boolean
   shipping_class?: 'Compact' | 'Medium' | 'Bulky'
   has_variants?: boolean
   variant_group_name?: string | null
