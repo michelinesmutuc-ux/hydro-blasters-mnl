@@ -30,7 +30,9 @@ async function fileToBase64(file: File) {
   })
 }
 
-type PromoReservation = { status: 'loading' | 'reserved' | 'unavailable' | 'expired' | 'error'; expiresAt?: string; serverNow?: string; discount: number }
+import { getOrCreateCheckoutSessionId, getOrCreateLaunchPromoReservation, type CheckoutReservation } from '../lib/promotions/checkout-reservation'
+
+type PromoReservation = CheckoutReservation | { status: 'loading'; expiresAt?: string; serverNow?: string; discount: number }
 
 function LaunchPromoReservation({ reservation, onRetry, onExpired }: { reservation: PromoReservation; onRetry: () => void; onExpired: () => void }) {
   const [remaining, setRemaining] = useState<number | null>(null)
@@ -70,20 +72,10 @@ export function GuestCheckout() {
 
   const reservePromo = useCallback(async (allowRecheck = false) => {
     if (!lines.length) return
-    const storedSession = localStorage.getItem('hydro-launch-promo-checkout-session')
-    const sessionId = checkoutSessionId.current || storedSession || crypto.randomUUID()
+    const sessionId = checkoutSessionId.current || getOrCreateCheckoutSessionId()
     checkoutSessionId.current = sessionId
-    localStorage.setItem('hydro-launch-promo-checkout-session', sessionId)
     setPromoReservation((current) => allowRecheck ? { status: 'loading', discount: 0 } : current)
-    const { data, error: reservationError } = await supabase.rpc('reserve_launch_promo', {
-      checkout_session: sessionId,
-      items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })),
-      allow_recheck: allowRecheck,
-    })
-    const result = data?.[0]
-    if (reservationError || !result) { setPromoReservation({ status: 'error', discount: 0 }); return }
-    const status = result.status as PromoReservation['status']
-    setPromoReservation({ status, expiresAt: result.expires_at ?? undefined, serverNow: result.server_now ?? undefined, discount: status === 'reserved' ? Number(result.discount_amount) : 0 })
+    setPromoReservation(await getOrCreateLaunchPromoReservation(lines, allowRecheck))
   }, [lines])
 
   useEffect(() => { void reservePromo() }, [reservePromo])
@@ -197,7 +189,7 @@ export function GuestCheckout() {
           delivery_method: delivery,
           payment_method: payment,
           payment_option_name: getPaymentOption(payment, bankOptionId)?.name ?? null,
-          items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })), checkout_session_id: checkoutSessionId.current || localStorage.getItem('hydro-launch-promo-checkout-session'),
+          items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })), checkout_session_id: checkoutSessionId.current || getOrCreateCheckoutSessionId(),
           idempotency_key: getOrderAttemptKey(),
           payment_proof: proof ? { base64: await fileToBase64(proof), contentType: proof.type } : null,
         },
