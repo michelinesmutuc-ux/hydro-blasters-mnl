@@ -11,7 +11,7 @@ export function AnnouncementBar() {
     ? '🎉 LAUNCH PROMO: FIRST 5 WEBSITE ORDERS GET 10% OFF — UP TO ₱1,500 · CLEARANCE ITEMS EXCLUDED'
     : '📍 PASAY CITY • SHOWROOM VISITS ARE BY APPOINTMENT ONLY'
   const mobileMessage = launchPromoActive
-    ? '🎉 LAUNCH PROMO: FIRST 5 ORDERS GET 10% OFF'
+    ? '🎉 10% OFF · FIRST 5 ORDERS · ₱1,500 MAX'
     : '📍 PASAY CITY • APPOINTMENT ONLY'
   return (
     <Link
