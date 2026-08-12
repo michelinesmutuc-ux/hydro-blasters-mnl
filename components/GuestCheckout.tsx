@@ -7,7 +7,7 @@ import { useCart } from './CartProvider'
 import { PaymentQr } from './PaymentQr'
 import { getPaymentOption } from '../lib/payment-config'
 import { calculateShipping } from '../lib/shipping/classes'
-import { isSameDayEligibleCity, sameDayProcessingLabel } from '../lib/delivery/same-day'
+import { isSameDayEligibleLocation, sameDayProcessingLabel, type SameDayNearbyArea } from '../lib/delivery/same-day'
 
 const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 const initial = { first_name: '', last_name: '', mobile_number: '', house_unit: '', street: '', barangay: '', city_municipality: '', region: '', postal_code: '', order_notes: '' }
@@ -65,7 +65,7 @@ export function GuestCheckout() {
   const [reservation, setReservation] = useState(false)
   const [codConfirm, setCodConfirm] = useState(false)
   const [sameDayAcknowledged, setSameDayAcknowledged] = useState(false)
-  const [sameDayNearbyCities, setSameDayNearbyCities] = useState<string[]>([])
+  const [sameDayNearbyAreas, setSameDayNearbyAreas] = useState<SameDayNearbyArea[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [qrAvailable, setQrAvailable] = useState(true)
@@ -84,8 +84,8 @@ export function GuestCheckout() {
   useEffect(() => { void reservePromo() }, [reservePromo])
   useEffect(() => {
     let mounted = true
-    void supabase.from('same_day_delivery_nearby_cities').select('city').eq('active', true).then(({ data }) => {
-      if (mounted) setSameDayNearbyCities((data ?? []).map((row) => row.city).filter((city): city is string => typeof city === 'string'))
+    void supabase.from('same_day_delivery_nearby_cities').select('city,province').eq('active', true).then(({ data }) => {
+      if (mounted) setSameDayNearbyAreas((data ?? []).filter((row): row is SameDayNearbyArea => typeof row.city === 'string'))
     })
     return () => { mounted = false }
   }, [])
@@ -95,17 +95,17 @@ export function GuestCheckout() {
     return () => document.removeEventListener('visibilitychange', revalidateWhenVisible)
   }, [reservePromo])
   useEffect(() => {
-    if (delivery === 'same_day_delivery' && !isSameDayEligibleCity(form.city_municipality, sameDayNearbyCities)) {
+    if (delivery === 'same_day_delivery' && !isSameDayEligibleLocation(form.city_municipality, form.region, sameDayNearbyAreas)) {
       setDelivery('nationwide_delivery')
       setPayment(null)
       setBankOptionId(null)
       setProof(null)
       setSameDayAcknowledged(false)
     }
-  }, [delivery, form.city_municipality, sameDayNearbyCities])
+  }, [delivery, form.city_municipality, form.region, sameDayNearbyAreas])
 
   const shippingQuote = calculateShipping(lines)
-  const sameDayEligible = isSameDayEligibleCity(form.city_municipality, sameDayNearbyCities)
+  const sameDayEligible = isSameDayEligibleLocation(form.city_municipality, form.region, sameDayNearbyAreas)
   const sameDay = delivery === 'same_day_delivery'
   const shipping = delivery === 'nationwide_delivery' ? shippingQuote.fee : 0
   const checkoutDiscount = promoReservation.status === 'reserved' ? promoReservation.discount : 0
@@ -201,7 +201,7 @@ export function GuestCheckout() {
     if (!payment) return setError('Please choose a payment method.')
     if (payment === 'bank_transfer' && !bankOptionId) return setError('Choose your bank before placing your order.')
     if (proofNeeded && !qrAvailable) return setError(payment === 'bank_transfer' ? 'Bank transfer is temporarily unavailable. Please choose another payment method.' : 'Payment details are temporarily unavailable. Please contact Hydro Blasters MNL before sending payment.')
-    if (sameDay && !sameDayEligible) return setError('Same-Day / On-Demand Delivery is available only in Metro Manila and selected nearby cities.')
+    if (sameDay && !sameDayEligible) return setError('Same-Day / On-Demand Delivery is available only in Metro Manila and selected nearby areas.')
     if (sameDay && !sameDayAcknowledged) return setError('Confirm that you will wait for the Ready for Rider confirmation.')
     if (proofNeeded && !proof) return setError('A payment screenshot is required.')
     if (pickup && !reservation) return setError('Confirm that this is only a reservation request.')
@@ -257,9 +257,9 @@ export function GuestCheckout() {
         </div></section>
         <section className="checkout-card"><h2>Delivery</h2>
           <label>Delivery Method <em>Required</em><select value={delivery} onChange={(event) => changeDelivery(event.target.value as typeof delivery)}><option value="nationwide_delivery">Standard Shipping</option><option value="same_day_delivery" disabled={!sameDayEligible}>Same-Day / On-Demand Delivery{sameDayEligible ? '' : ' — enter an eligible city first'}</option><option value="showroom_pickup">Showroom Pickup</option></select></label>
-          {delivery !== 'showroom_pickup' && !sameDayEligible && <p className="same-day-availability">Same-Day / On-Demand Delivery is unavailable for this delivery address. Metro Manila and selected nearby cities only. Pickup is from Pasay City.</p>}
+          {delivery !== 'showroom_pickup' && !sameDayEligible && <p className="same-day-availability">Same-Day / On-Demand Delivery is unavailable for this delivery address. Metro Manila and selected nearby areas only. Pickup is from Pasay City.</p>}
           {delivery !== 'showroom_pickup' && <div className="checkout-grid">{(['house_unit', 'street', 'barangay', 'city_municipality', 'region', 'postal_code'] as const).map((key) => <label key={key}>{key.replaceAll('_', ' ')} <em>Required</em><input required value={form[key]} onChange={(event) => update(key, event.target.value)} /></label>)}</div>}
-          {sameDay && <aside className="same-day-card"><strong>Same-Day / On-Demand Delivery</strong><b>Metro Manila & selected nearby cities only</b><p><b>Pickup origin: Pasay City</b><br />Courier cost depends on your delivery location. You book and pay your own Lalamove, Grab, or equivalent rider.</p><p className="same-day-warning">PLEASE <em>DO NOT</em> BOOK A RIDER YET.</p><p>We&apos;ll let you know once your package is ready for pickup.</p><p><b>{sameDayProcessingLabel() === 'same_day_processing' ? 'Same-Day Processing' : 'Next-Day Processing'}</b><br />Paid orders verified before 3:00 PM are processed for same-day pickup. Orders verified after 3:00 PM are processed the following day.</p><label className="checkout-check"><input type="checkbox" checked={sameDayAcknowledged} onChange={(event) => setSameDayAcknowledged(event.target.checked)} /> I understand that I should wait for the “Ready for Rider” confirmation before booking my courier.</label></aside>}
+          {sameDay && <aside className="same-day-card"><strong>Same-Day / On-Demand Delivery</strong><b>Metro Manila & selected nearby areas</b><p><b>Pickup origin: Pasay City</b><br />Available within Metro Manila and selected nearby areas in Rizal, Cavite, Bulacan, and Laguna. Courier cost depends on your delivery location. You book and pay your own Lalamove, Grab, or equivalent rider.</p><p className="same-day-warning">PLEASE <em>DO NOT</em> BOOK A RIDER YET.</p><p>We&apos;ll let you know once your package is ready for pickup.</p><p><b>{sameDayProcessingLabel() === 'same_day_processing' ? 'Same-Day Processing' : 'Next-Day Processing'}</b><br />Paid orders verified before 3:00 PM are processed for same-day pickup. Orders verified after 3:00 PM are processed the following day.</p><label className="checkout-check"><input type="checkbox" checked={sameDayAcknowledged} onChange={(event) => setSameDayAcknowledged(event.target.checked)} /> I understand that I should wait for the “Ready for Rider” confirmation before booking my courier.</label></aside>}
           <label>Order Notes <em>Optional</em><textarea value={form.order_notes} onChange={(event) => update('order_notes', event.target.value)} /></label>
         </section>
         <section className="checkout-card"><h2>Payment</h2>
