@@ -7,6 +7,7 @@ export type CheckoutReservation = {
   status: ReservationStatus
   expiresAt?: string
   serverNow?: string
+  eligibleSubtotal: number
   discount: number
 }
 
@@ -37,12 +38,13 @@ export async function getOrCreateLaunchPromoReservation(lines: CartLine[], allow
     allow_recheck: allowRecheck,
   })
   const result = data?.[0]
-  if (error || !result) return { status: 'error', discount: 0 }
+  if (error || !result) return { status: 'error', eligibleSubtotal: 0, discount: 0 }
   const status = result.status as ReservationStatus
   return {
     status,
     expiresAt: result.expires_at ?? undefined,
     serverNow: result.server_now ?? undefined,
+    eligibleSubtotal: Number(result.eligible_subtotal ?? 0),
     discount: status === 'reserved' ? Number(result.discount_amount) : 0,
   }
 }
@@ -57,6 +59,7 @@ export async function getExistingLaunchPromoReservation(): Promise<CheckoutReser
     status: result.status as ReservationStatus,
     expiresAt: result.expires_at ?? undefined,
     serverNow: result.server_now ?? undefined,
+    eligibleSubtotal: Number(result.eligible_subtotal ?? 0),
     discount: result.status === 'reserved' ? Number(result.discount_amount) : 0,
   }
 }

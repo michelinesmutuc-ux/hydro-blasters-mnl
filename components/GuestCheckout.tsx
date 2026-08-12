@@ -33,7 +33,7 @@ async function fileToBase64(file: File) {
 
 import { getOrCreateCheckoutSessionId, getOrCreateLaunchPromoReservation, type CheckoutReservation } from '../lib/promotions/checkout-reservation'
 
-type PromoReservation = CheckoutReservation | { status: 'loading'; expiresAt?: string; serverNow?: string; discount: number }
+type PromoReservation = CheckoutReservation | { status: 'loading'; expiresAt?: string; serverNow?: string; eligibleSubtotal: number; discount: number }
 
 function LaunchPromoReservation({ reservation, onRetry, onExpired }: { reservation: PromoReservation; onRetry: () => void; onExpired: () => void }) {
   const [remaining, setRemaining] = useState<number | null>(null)
@@ -69,7 +69,7 @@ export function GuestCheckout() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [qrAvailable, setQrAvailable] = useState(true)
-  const [promoReservation, setPromoReservation] = useState<PromoReservation>({ status: 'loading', discount: 0 })
+  const [promoReservation, setPromoReservation] = useState<PromoReservation>({ status: 'loading', eligibleSubtotal: 0, discount: 0 })
   const orderAttemptKey = useRef<string | null>(null)
   const checkoutSessionId = useRef<string | null>(null)
 
@@ -77,7 +77,7 @@ export function GuestCheckout() {
     if (!lines.length) return
     const sessionId = checkoutSessionId.current || getOrCreateCheckoutSessionId()
     checkoutSessionId.current = sessionId
-    setPromoReservation((current) => allowRecheck ? { status: 'loading', discount: 0 } : current)
+    setPromoReservation((current) => allowRecheck ? { status: 'loading', eligibleSubtotal: 0, discount: 0 } : current)
     setPromoReservation(await getOrCreateLaunchPromoReservation(lines, allowRecheck))
   }, [lines])
 
