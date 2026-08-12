@@ -30,7 +30,7 @@ async function fileToBase64(file: File) {
   })
 }
 
-type PromoReservation = { status: 'loading' | 'reserved' | 'unavailable' | 'expired'; expiresAt?: string; serverNow?: string; discount: number }
+type PromoReservation = { status: 'loading' | 'reserved' | 'unavailable' | 'expired' | 'error'; expiresAt?: string; serverNow?: string; discount: number }
 
 function LaunchPromoReservation({ reservation, onRetry, onExpired }: { reservation: PromoReservation; onRetry: () => void; onExpired: () => void }) {
   const [remaining, setRemaining] = useState<number | null>(null)
@@ -44,6 +44,7 @@ function LaunchPromoReservation({ reservation, onRetry, onExpired }: { reservati
   useEffect(() => { if (remaining === 0 && reservation.status === 'reserved') onExpired() }, [onExpired, remaining, reservation.status])
   if (reservation.status === 'loading') return <section className="launch-promo-reservation"><strong>Checking Launch Promo availability…</strong></section>
   if (reservation.status === 'expired' || remaining === 0) return <section className="launch-promo-reservation launch-promo-unavailable"><strong>Launch Promo reservation expired</strong><span>Your reserved promo time has ended. Check again to see whether a public promo slot is now available.</span><button type="button" onClick={onRetry}>Check Promo Availability</button></section>
+  if (reservation.status === 'error') return <section className="launch-promo-reservation launch-promo-unavailable"><strong>Launch Promo availability couldn&apos;t be checked right now.</strong><span>Your order total is shown without a promo discount. Please try again.</span><button type="button" onClick={onRetry}>Try Again</button></section>
   if (reservation.status !== 'reserved') return <section className="launch-promo-reservation launch-promo-unavailable"><strong>Launch Promo slots are currently fully reserved or claimed.</strong><span>Checkout shows your normal total before you place your order.</span></section>
   if (remaining === null) return <section className="launch-promo-reservation"><strong>Checking your Launch Promo reservation…</strong></section>
   const minutes = Math.floor(remaining / 60); const seconds = remaining % 60
@@ -80,7 +81,7 @@ export function GuestCheckout() {
       allow_recheck: allowRecheck,
     })
     const result = data?.[0]
-    if (reservationError || !result) { setPromoReservation({ status: 'unavailable', discount: 0 }); return }
+    if (reservationError || !result) { setPromoReservation({ status: 'error', discount: 0 }); return }
     const status = result.status as PromoReservation['status']
     setPromoReservation({ status, expiresAt: result.expires_at ?? undefined, serverNow: result.server_now ?? undefined, discount: status === 'reserved' ? Number(result.discount_amount) : 0 })
   }, [lines])
