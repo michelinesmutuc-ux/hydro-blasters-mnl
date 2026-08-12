@@ -20,6 +20,7 @@ export type Product = {
   short_description: string | null
   description: string | null
   image_urls?: string[]
+  is_clearance?: boolean
   has_variants?: boolean
   variant_group_name?: string | null
 }
@@ -131,6 +132,7 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
           {product.brand && <Link className="product-brand" href={`/shop?brand=${encodeURIComponent(product.brand)}`}><span>Brand</span><strong>{product.brand}</strong></Link>}
           <h1>{product.name}</h1>
           {!product.has_variants && <p className="product-price">{peso(product.price)}</p>}
+          {product.is_clearance && <p className="product-clearance-note"><strong>Clearance Sale</strong><span>Additional promos excluded.</span></p>}
           <ProductPurchaseActions product={product} variants={variantRows} onVariantImageChange={setSelectedVariantImage} />
           <CompareButton product={{ ...product, image_urls: product.image_urls ?? [] }} />
           <dl className="product-detail-meta"><div><dt>Stock</dt><dd>{product.has_variants ? `${product.stock} across variants` : product.stock}</dd></div><div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div></dl>

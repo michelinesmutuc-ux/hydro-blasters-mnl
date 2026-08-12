@@ -1,11 +1,12 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase/client'
 import { useCart } from './CartProvider'
 import { PaymentQr } from './PaymentQr'
 import { getPaymentOption } from '../lib/payment-config'
+import { fetchLaunchPromoStatus, type LaunchPromoStatus } from '../lib/promotions/launch-promo'
 
 const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 const initial = { first_name: '', last_name: '', mobile_number: '', house_unit: '', street: '', barangay: '', city_municipality: '', region: '', postal_code: '', order_notes: '' }
@@ -42,7 +43,10 @@ export function GuestCheckout() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [qrAvailable, setQrAvailable] = useState(true)
+  const [launchPromo, setLaunchPromo] = useState<LaunchPromoStatus | null>(null)
   const orderAttemptKey = useRef<string | null>(null)
+
+  useEffect(() => { void fetchLaunchPromoStatus().then(setLaunchPromo) }, [])
 
   const bulky = lines.some((line) => line.shipping_classification === 'bulky')
   const shipping = delivery === 'nationwide_delivery' ? (bulky ? 199 : 149) : 0
@@ -51,6 +55,10 @@ export function GuestCheckout() {
   const dueNow = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : subtotal + shipping
   const overallTotal = subtotal + shipping + codFee
   const proofNeeded = !pickup
+  const eligibleMerchandise = lines.reduce((total, line) => total + (line.is_clearance ? 0 : Number(line.price) * line.quantity), 0)
+  const estimatedPromoDiscount = launchPromo?.active && eligibleMerchandise > 0
+    ? Math.min(Math.round(eligibleMerchandise * launchPromo.discountPercent * 100) / 100, launchPromo.maximumDiscount)
+    : 0
   const submitDisabled = saving || (payment !== null && proofNeeded && !qrAvailable) || (payment === 'bank_transfer' && !bankOptionId)
   const submitLabel = saving
     ? 'Placing order…'
@@ -152,7 +160,7 @@ export function GuestCheckout() {
       })
       if (invokeError) throw invokeError
       if (data?.error) throw new Error(data.error)
-      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, customer_name: customerName, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, variant_group_name: line.variant_group_name, variant_name: line.variant_name, quantity: line.quantity, line_total: Number(line.price) * line.quantity })) }))
+      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, customer_name: customerName, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, variant_group_name: line.variant_group_name, variant_name: line.variant_name, quantity: line.quantity, line_total: Number(line.price) * line.quantity, is_clearance: line.is_clearance ?? false })) }))
       sessionStorage.removeItem('hydro-order-attempt-key')
       clear()
       router.push('/order-confirmation')
@@ -196,7 +204,7 @@ export function GuestCheckout() {
         </section>
         <section className="checkout-final-cta"><p className="eyebrow">Ready to submit your order?</p><SummarySubmit /></section>
       </div>
-      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name}{line.variant_name ? <small>{line.variant_group_name || 'Option'}: {line.variant_name}</small> : null} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>Shipping</dt><dd>{peso(shipping)}</dd></div><div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
+      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name}{line.variant_name ? <small>{line.variant_group_name || 'Option'}: {line.variant_name}</small> : null}{line.is_clearance ? <small className="clearance-exclusion">Clearance Sale — additional promos excluded</small> : null} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{launchPromo?.active && eligibleMerchandise > 0 && <div className="launch-promo-estimate"><strong>Launch Promo — 10% Off</strong><span>Estimated saving up to {peso(estimatedPromoDiscount)}. Automatically applied to eligible items if a slot remains when your order is created. Clearance items excluded.</span></div>}{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>Shipping</dt><dd>{peso(shipping)}</dd></div><div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
     </form>
   </section>
 }

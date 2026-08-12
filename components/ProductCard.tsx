@@ -24,6 +24,7 @@ export type PublicProduct = {
   show_on_homepage?: boolean
   highlight_type?: HomepageHighlightType | null
   homepage_sort_order?: number | null
+  is_clearance?: boolean
   has_variants?: boolean
   variant_group_name?: string | null
 }
@@ -58,7 +59,7 @@ export function ProductCard({ product, actions }: ProductCardProps) {
         <ProductImageFrame src={imageUrl} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="card" />
       </Link>
       <div className="product-card-body">
-        {product.highlight_type && <span className={`product-highlight-badge product-highlight-${product.highlight_type}`}>{highlightLabels[product.highlight_type]}</span>}
+        {product.is_clearance ? <span className="product-highlight-badge product-highlight-clearance_sale">Clearance Sale</span> : product.highlight_type && <span className={`product-highlight-badge product-highlight-${product.highlight_type}`}>{highlightLabels[product.highlight_type]}</span>}
         <p className="placeholder-label">{product.category}</p>
         <h2><Link className="product-card-title-link" href={productHref}>{product.name}</Link></h2>
           <dl className="product-meta">

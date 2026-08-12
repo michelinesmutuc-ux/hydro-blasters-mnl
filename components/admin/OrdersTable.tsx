@@ -16,6 +16,8 @@ type Order = {
   upfront_amount: number | string
   rider_collectible_amount: number | string
   showroom_payable_amount: number | string
+  promo_name: string | null
+  promo_discount: number | string
   payment_status: string
   order_status: string
   payment_proof_path: string | null
@@ -101,7 +103,7 @@ export function OrdersTable() {
   async function load() {
     let query = supabase
       .from('orders')
-      .select('id,order_reference,customer_name,mobile_number,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,payment_status,order_status,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,is_test_order,archived_at,created_at,order_notes')
+      .select('id,order_reference,customer_name,mobile_number,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,promo_name,promo_discount,payment_status,order_status,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,is_test_order,archived_at,created_at,order_notes')
       .order('created_at', { ascending: false })
     if (orderFilter === 'active') query = query.is('archived_at', null)
     if (orderFilter === 'archived') query = query.not('archived_at', 'is', null)
@@ -370,7 +372,7 @@ export function OrdersTable() {
         <td>{(orderItemsByOrder[order.id] ?? []).map((item, index) => <div key={`${item.product_name}-${index}`}>{item.product_name}{item.variant_name && <><br /><span className={styles.placeholderText}>{item.variant_group_name || 'Option'}: {item.variant_name}</span></>}<br /><span className={styles.placeholderText}>Qty {item.quantity}</span></div>)}</td>
         <td>{order.delivery_method.replaceAll('_', ' ')}</td>
         <td>{order.payment_method.replaceAll('_', ' ')}{order.selected_payment_option_name && <><br />Bank selected: {order.selected_payment_option_name}</>}</td>
-        <td>Amount due now ₱{order.upfront_amount}<br />Rider/showroom ₱{Number(order.rider_collectible_amount) || Number(order.showroom_payable_amount)}</td>
+        <td>{Number(order.promo_discount) > 0 && <><strong>{order.promo_name || 'Launch Promo'}</strong><br />10% OFF · −₱{order.promo_discount}<br /></>}Amount due now ₱{order.upfront_amount}<br />Rider/showroom ₱{Number(order.rider_collectible_amount) || Number(order.showroom_payable_amount)}</td>
         <td>
           <select value={order.payment_status} onChange={(event) => void update(order, 'payment_status', event.target.value)}><option value="pending_verification">Pending verification</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select>
           <select value={order.order_status} onChange={(event) => void update(order, 'order_status', event.target.value)}><option value="pending">Pending</option><option value="reservation_pending">Reservation pending</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option></select>

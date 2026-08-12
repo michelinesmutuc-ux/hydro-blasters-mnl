@@ -41,7 +41,7 @@ function slugify(value: string) {
 }
 
 function initialValues() {
-  return { name: '', brand: '', category: '', productType: '' as GelBlasterType | '', price: '0', stock: '0', status: 'draft', shippingClassification: 'standard', shortDescription: '', description: '', featured: false, isActive: false, hasVariants: false, variantGroupName: '', showOnHomepage: false, highlightType: 'none' as HighlightType, homepageSortOrder: '' }
+  return { name: '', brand: '', category: '', productType: '' as GelBlasterType | '', price: '0', stock: '0', status: 'draft', shippingClassification: 'standard', shortDescription: '', description: '', featured: false, isActive: false, isClearance: false, hasVariants: false, variantGroupName: '', showOnHomepage: false, highlightType: 'none' as HighlightType, homepageSortOrder: '' }
 }
 
 function newSpecificationRow(): SpecificationRow {
@@ -103,6 +103,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         description: data.description ?? '',
         featured: data.featured,
         isActive: mode === 'add' ? false : data.is_active,
+        isClearance: mode === 'add' ? false : data.is_clearance ?? false,
         hasVariants: data.has_variants ?? false,
         variantGroupName: data.variant_group_name ?? '',
         showOnHomepage: mode === 'add' ? false : data.show_on_homepage ?? false,
@@ -356,6 +357,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         specifications: {},
         image_urls: [],
         featured: draft.featured,
+        is_clearance: draft.isClearance,
         is_active: draft.isActive,
         has_variants: draft.hasVariants,
         variant_group_name: draft.hasVariants ? draft.variantGroupName.trim() : null,
@@ -369,7 +371,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         const { data, error: insertError } = await supabase
           .from('products')
           .insert({ ...productPayload, slug: createdSlug })
-          .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+          .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,is_clearance,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
           .single()
         if (insertError || !data) {
           console.error('[Hydro Blasters MNL] products insert failed:', insertError)
@@ -391,7 +393,7 @@ export function ProductForm({ mode }: ProductFormProps) {
             .from('products')
             .update({ image_urls: uploadedImageUrls, updated_at: new Date().toISOString() })
             .eq('id', data.id)
-            .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+            .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,is_clearance,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
             .single()
           if (imageUpdateError || !imageUpdatedProduct) throw imageUpdateError ?? new Error('Product saved, but its image URLs could not be saved.')
           savedProduct = imageUpdatedProduct
@@ -440,6 +442,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         specifications: {},
         image_urls: finalImageUrls,
         featured: draft.featured,
+        is_clearance: draft.isClearance,
         is_active: draft.isActive,
         has_variants: draft.hasVariants,
         variant_group_name: draft.hasVariants ? draft.variantGroupName.trim() : null,
@@ -454,7 +457,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         .from('products')
         .update(updatePayload)
         .eq('id', productId as string)
-        .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+        .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,is_clearance,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
         .single()
       if (updateError) throw updateError
       console.log('Returned Supabase row:', data)
@@ -517,6 +520,7 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={styles.toggleRow}>
             <label className={styles.toggle}><span><strong>Featured</strong><span>Set featured status</span></span><input className={styles.switch} type="checkbox" checked={draft.featured} onChange={(event) => update('featured', event.target.checked)} /></label>
             <label className={styles.toggle}><span><strong>Active</strong><span>Set active status</span></span><input className={styles.switch} type="checkbox" checked={draft.isActive} onChange={(event) => update('isActive', event.target.checked)} /></label>
+            <label className={styles.toggle}><span><strong>Clearance Sale</strong><span>Excludes this product from Launch Promo.</span></span><input className={styles.switch} type="checkbox" checked={draft.isClearance} onChange={(event) => update('isClearance', event.target.checked)} /></label>
           </div>
           <div className={`${styles.toggleRow} ${styles.fieldFull}`}>
             <label className={styles.toggle}><span><strong>This product has variants</strong><span>Use one option group, such as Color or Package.</span></span><input className={styles.switch} type="checkbox" checked={draft.hasVariants} onChange={(event) => update('hasVariants', event.target.checked)} /></label>

@@ -18,6 +18,8 @@ type Order = {
   rider_collectible_amount: number | string
   showroom_payable_amount: number | string
   overall_total: number | string
+  promo_name: string | null
+  promo_discount: number | string
   payment_proof_path: string | null
   payment_status: string
   order_status: string
@@ -118,7 +120,7 @@ Deno.serve(async (request) => {
 
     const { data: order, error: orderError } = await admin
       .from('orders')
-      .select('id,order_reference,customer_name,mobile_number,city_municipality,region,order_notes,delivery_method,payment_method,selected_payment_option_name,merchandise_subtotal,shipping_fee,cod_service_fee,upfront_amount,rider_collectible_amount,showroom_payable_amount,overall_total,payment_proof_path,payment_status,order_status,telegram_notification_status,telegram_notification_type,telegram_notification_sent_at,telegram_notification_attempted_at')
+      .select('id,order_reference,customer_name,mobile_number,city_municipality,region,order_notes,delivery_method,payment_method,selected_payment_option_name,merchandise_subtotal,shipping_fee,cod_service_fee,upfront_amount,rider_collectible_amount,showroom_payable_amount,overall_total,promo_name,promo_discount,payment_proof_path,payment_status,order_status,telegram_notification_status,telegram_notification_type,telegram_notification_sent_at,telegram_notification_attempted_at')
       .eq('id', orderId)
       .single<Order>()
     if (orderError || !order) return json({ error: 'Order not found.' }, 404)
@@ -162,6 +164,7 @@ Deno.serve(async (request) => {
     const address = [order.city_municipality, order.region].filter(Boolean).join(', ') || 'Not provided'
     const amountLines = [
       `<b>Merchandise</b>: ${peso(order.merchandise_subtotal)}`,
+      Number(order.promo_discount) > 0 ? `<b>${escapeTelegramHtml(order.promo_name || 'Launch Promo')}</b>: −${peso(order.promo_discount)}` : null,
       Number(order.shipping_fee) > 0 ? `<b>Shipping</b>: ${peso(order.shipping_fee)}` : null,
       Number(order.cod_service_fee) > 0 ? `<b>COD fee</b>: ${peso(order.cod_service_fee)}` : null,
       `<b>Overall total</b>: ${peso(order.overall_total)}`,
@@ -178,7 +181,8 @@ Deno.serve(async (request) => {
     const riderAmountCaption = order.payment_method === 'cash_on_delivery'
       ? `\n\n💵 <b>Amount Due to Rider</b>\n${peso(order.rider_collectible_amount)}`
       : ''
-    const caption = `${notificationHeading}\n\n👤 <b>Customer</b>\n${escapeTelegramHtml(order.customer_name)}\n\n🧾 <b>Order</b>\n${escapeTelegramHtml(order.order_reference)}\n\n${paymentCaptionLabel}\n${paymentLine}\n\n💰 <b>Amount Due Now</b>\n${peso(order.upfront_amount)}${riderAmountCaption}\n\n📦 <b>Overall Order Value</b>\n${peso(order.overall_total)}\n\n⏳ <b>Status</b>\n${readable(order.payment_status)}`
+    const promoCaption = Number(order.promo_discount) > 0 ? `\n\n🎉 <b>${escapeTelegramHtml(order.promo_name || 'Launch Promo')}</b>\n−${peso(order.promo_discount)}` : ''
+    const caption = `${notificationHeading}\n\n👤 <b>Customer</b>\n${escapeTelegramHtml(order.customer_name)}\n\n🧾 <b>Order</b>\n${escapeTelegramHtml(order.order_reference)}\n\n${paymentCaptionLabel}\n${paymentLine}${promoCaption}\n\n💰 <b>Amount Due Now</b>\n${peso(order.upfront_amount)}${riderAmountCaption}\n\n📦 <b>Overall Order Value</b>\n${peso(order.overall_total)}\n\n⏳ <b>Status</b>\n${readable(order.payment_status)}`
     const message = `${notificationHeading}\n\n<b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n<b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n<b>Items</b>\n${itemLines}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\nReview this order in Admin Orders.`
 
     let telegram
