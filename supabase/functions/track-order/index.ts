@@ -8,7 +8,7 @@ const lastName = (name: string) => {
   const words = name.trim().split(/\s+/)
   return words[words.length - 1]?.toLocaleLowerCase() ?? ''
 }
-const safeOrderFields = 'id,order_reference,customer_name,first_name,last_name,mobile_number,city_municipality,delivery_method,payment_method,merchandise_subtotal,shipping_fee,cod_service_fee,upfront_amount,rider_collectible_amount,overall_total,promo_name,promo_discount,payment_status,order_status,created_at'
+const safeOrderFields = 'id,order_reference,customer_name,first_name,last_name,mobile_number,city_municipality,delivery_method,payment_method,merchandise_subtotal,shipping_fee,shipping_tier,cod_service_fee,upfront_amount,rider_collectible_amount,overall_total,promo_name,promo_discount,payment_status,order_status,created_at'
 
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers })

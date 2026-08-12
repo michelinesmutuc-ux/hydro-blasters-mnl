@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 type ReceiptItem = { name: string; variant_group_name?: string | null; variant_name?: string | null; quantity: number; line_total: number }
 type Order = {
   order_reference: string; customer_name: string; mobile_number?: string; city_municipality?: string; order_date?: string; items?: ReceiptItem[]
-  merchandise_subtotal: number | string; shipping_fee: number | string; cod_service_fee: number | string; upfront_amount: number | string; rider_collectible_amount: number | string; overall_total: number | string; promo_name?: string | null; promo_discount?: number | string | null
+  merchandise_subtotal: number | string; shipping_fee: number | string; shipping_tier?: string | null; cod_service_fee: number | string; upfront_amount: number | string; rider_collectible_amount: number | string; overall_total: number | string; promo_name?: string | null; promo_discount?: number | string | null
   payment_method: string; payment_status?: string; order_status?: string
 }
 const peso = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value ?? 0))

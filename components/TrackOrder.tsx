@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { supabase } from '../lib/supabase/client'
 
 type Item = { product_name: string; variant_group_name?: string | null; variant_name?: string | null; quantity: number; line_total: number }
-type Order = { id: string; order_reference: string; customer_name: string; mobile_number: string; city_municipality: string | null; delivery_method: string; payment_method: string; merchandise_subtotal: number; shipping_fee: number; cod_service_fee: number; upfront_amount: number; rider_collectible_amount: number; overall_total: number; promo_name?: string | null; promo_discount?: number | string; payment_status: string; order_status: string; created_at: string; items?: Item[] }
+type Order = { id: string; order_reference: string; customer_name: string; mobile_number: string; city_municipality: string | null; delivery_method: string; payment_method: string; merchandise_subtotal: number; shipping_fee: number; shipping_tier?: string | null; cod_service_fee: number; upfront_amount: number; rider_collectible_amount: number; overall_total: number; promo_name?: string | null; promo_discount?: number | string; payment_status: string; order_status: string; created_at: string; items?: Item[] }
 const peso = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value))
 const label = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase())
 const maskMobile = (value: string) => value.length > 4 ? `${value.slice(0, 4)}•••${value.slice(-4)}` : value

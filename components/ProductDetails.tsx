@@ -20,6 +20,7 @@ export type Product = {
   short_description: string | null
   description: string | null
   image_urls?: string[]
+  shipping_class?: 'Compact' | 'Standard' | 'Bulky'
   is_clearance?: boolean
   has_variants?: boolean
   variant_group_name?: string | null

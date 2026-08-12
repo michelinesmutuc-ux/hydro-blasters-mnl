@@ -13,6 +13,7 @@ type Order = {
   selected_payment_option_name: string | null
   merchandise_subtotal: number | string
   shipping_fee: number | string
+  shipping_tier: string | null
   cod_service_fee: number | string
   upfront_amount: number | string
   rider_collectible_amount: number | string
@@ -120,7 +121,7 @@ Deno.serve(async (request) => {
 
     const { data: order, error: orderError } = await admin
       .from('orders')
-      .select('id,order_reference,customer_name,mobile_number,city_municipality,region,order_notes,delivery_method,payment_method,selected_payment_option_name,merchandise_subtotal,shipping_fee,cod_service_fee,upfront_amount,rider_collectible_amount,showroom_payable_amount,overall_total,promo_name,promo_discount,payment_proof_path,payment_status,order_status,telegram_notification_status,telegram_notification_type,telegram_notification_sent_at,telegram_notification_attempted_at')
+      .select('id,order_reference,customer_name,mobile_number,city_municipality,region,order_notes,delivery_method,payment_method,selected_payment_option_name,merchandise_subtotal,shipping_fee,shipping_tier,cod_service_fee,upfront_amount,rider_collectible_amount,showroom_payable_amount,overall_total,promo_name,promo_discount,payment_proof_path,payment_status,order_status,telegram_notification_status,telegram_notification_type,telegram_notification_sent_at,telegram_notification_attempted_at')
       .eq('id', orderId)
       .single<Order>()
     if (orderError || !order) return json({ error: 'Order not found.' }, 404)
@@ -165,7 +166,7 @@ Deno.serve(async (request) => {
     const amountLines = [
       `<b>Merchandise</b>: ${peso(order.merchandise_subtotal)}`,
       Number(order.promo_discount) > 0 ? `<b>${escapeTelegramHtml(order.promo_name || 'Launch Promo')}</b>: −${peso(order.promo_discount)}` : null,
-      Number(order.shipping_fee) > 0 ? `<b>Shipping</b>: ${peso(order.shipping_fee)}` : null,
+      Number(order.shipping_fee) > 0 ? `<b>Shipping${order.shipping_tier ? ` (${escapeTelegramHtml(order.shipping_tier)})` : ''}</b>: ${peso(order.shipping_fee)}` : null,
       Number(order.cod_service_fee) > 0 ? `<b>COD fee</b>: ${peso(order.cod_service_fee)}` : null,
       `<b>Overall total</b>: ${peso(order.overall_total)}`,
       order.payment_method === 'pay_upon_pickup'
