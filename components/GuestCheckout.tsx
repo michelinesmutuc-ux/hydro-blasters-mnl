@@ -7,6 +7,7 @@ import { useCart } from './CartProvider'
 import { PaymentQr } from './PaymentQr'
 import { getPaymentOption } from '../lib/payment-config'
 import { calculateShipping } from '../lib/shipping/classes'
+import { isSameDayEligibleCity, sameDayProcessingLabel } from '../lib/delivery/same-day'
 
 const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 const initial = { first_name: '', last_name: '', mobile_number: '', house_unit: '', street: '', barangay: '', city_municipality: '', region: '', postal_code: '', order_notes: '' }
@@ -57,12 +58,14 @@ export function GuestCheckout() {
   const { lines, subtotal, clear } = useCart()
   const router = useRouter()
   const [form, setForm] = useState(initial)
-  const [delivery, setDelivery] = useState<'nationwide_delivery' | 'showroom_pickup'>('nationwide_delivery')
+  const [delivery, setDelivery] = useState<'nationwide_delivery' | 'same_day_delivery' | 'showroom_pickup'>('nationwide_delivery')
   const [payment, setPayment] = useState<PaymentMethod | null>(null)
   const [bankOptionId, setBankOptionId] = useState<string | null>(null)
   const [proof, setProof] = useState<File | null>(null)
   const [reservation, setReservation] = useState(false)
   const [codConfirm, setCodConfirm] = useState(false)
+  const [sameDayAcknowledged, setSameDayAcknowledged] = useState(false)
+  const [sameDayNearbyCities, setSameDayNearbyCities] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [qrAvailable, setQrAvailable] = useState(true)
@@ -80,12 +83,30 @@ export function GuestCheckout() {
 
   useEffect(() => { void reservePromo() }, [reservePromo])
   useEffect(() => {
+    let mounted = true
+    void supabase.from('same_day_delivery_nearby_cities').select('city').eq('active', true).then(({ data }) => {
+      if (mounted) setSameDayNearbyCities((data ?? []).map((row) => row.city).filter((city): city is string => typeof city === 'string'))
+    })
+    return () => { mounted = false }
+  }, [])
+  useEffect(() => {
     const revalidateWhenVisible = () => { if (document.visibilityState === 'visible') void reservePromo() }
     document.addEventListener('visibilitychange', revalidateWhenVisible)
     return () => document.removeEventListener('visibilitychange', revalidateWhenVisible)
   }, [reservePromo])
+  useEffect(() => {
+    if (delivery === 'same_day_delivery' && !isSameDayEligibleCity(form.city_municipality, sameDayNearbyCities)) {
+      setDelivery('nationwide_delivery')
+      setPayment(null)
+      setBankOptionId(null)
+      setProof(null)
+      setSameDayAcknowledged(false)
+    }
+  }, [delivery, form.city_municipality, sameDayNearbyCities])
 
   const shippingQuote = calculateShipping(lines)
+  const sameDayEligible = isSameDayEligibleCity(form.city_municipality, sameDayNearbyCities)
+  const sameDay = delivery === 'same_day_delivery'
   const shipping = delivery === 'nationwide_delivery' ? shippingQuote.fee : 0
   const checkoutDiscount = promoReservation.status === 'reserved' ? promoReservation.discount : 0
   const discountedMerchandise = Math.max(0, subtotal - checkoutDiscount)
@@ -94,7 +115,7 @@ export function GuestCheckout() {
   const dueNow = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : discountedMerchandise + shipping
   const overallTotal = discountedMerchandise + shipping + codFee
   const proofNeeded = !pickup
-  const submitDisabled = saving || promoReservation.status === 'loading' || (payment !== null && proofNeeded && !qrAvailable) || (payment === 'bank_transfer' && !bankOptionId)
+  const submitDisabled = saving || promoReservation.status === 'loading' || (payment !== null && proofNeeded && !qrAvailable) || (payment === 'bank_transfer' && !bankOptionId) || (sameDay && !sameDayAcknowledged)
   const submitLabel = saving
     ? 'Placing order…'
     : payment === 'cash_on_delivery'
@@ -115,9 +136,16 @@ export function GuestCheckout() {
     setCodConfirm(false)
     setReservation(false)
     setQrAvailable(nextPayment === 'pay_upon_pickup')
-    setDelivery(nextPayment === 'pay_upon_pickup' ? 'showroom_pickup' : 'nationwide_delivery')
+    // A prepaid method must not silently replace an already-selected
+    // Same-Day delivery method with Standard Shipping.
+    setDelivery((current) => nextPayment === 'pay_upon_pickup'
+      ? 'showroom_pickup'
+      : current === 'showroom_pickup'
+        ? 'nationwide_delivery'
+        : current)
   }
   const changeDelivery = (nextDelivery: typeof delivery) => {
+    if (nextDelivery === 'same_day_delivery' && !sameDayEligible) return
     setDelivery(nextDelivery)
     setPayment(null)
     setBankOptionId(null)
@@ -125,6 +153,7 @@ export function GuestCheckout() {
     setQrAvailable(false)
     setCodConfirm(false)
     setReservation(false)
+    setSameDayAcknowledged(false)
   }
   const selectBankOption = (nextBankOptionId: string | null) => {
     setBankOptionId(nextBankOptionId)
@@ -172,6 +201,8 @@ export function GuestCheckout() {
     if (!payment) return setError('Please choose a payment method.')
     if (payment === 'bank_transfer' && !bankOptionId) return setError('Choose your bank before placing your order.')
     if (proofNeeded && !qrAvailable) return setError(payment === 'bank_transfer' ? 'Bank transfer is temporarily unavailable. Please choose another payment method.' : 'Payment details are temporarily unavailable. Please contact Hydro Blasters MNL before sending payment.')
+    if (sameDay && !sameDayEligible) return setError('Same-Day / On-Demand Delivery is available only in Metro Manila and selected nearby cities.')
+    if (sameDay && !sameDayAcknowledged) return setError('Confirm that you will wait for the Ready for Rider confirmation.')
     if (proofNeeded && !proof) return setError('A payment screenshot is required.')
     if (pickup && !reservation) return setError('Confirm that this is only a reservation request.')
     if (payment === 'cash_on_delivery' && !codConfirm) return setError('Confirm the COD payment requirement.')
@@ -187,6 +218,7 @@ export function GuestCheckout() {
           ...form,
           customer_name: customerName,
           delivery_method: delivery,
+          same_day_acknowledged: sameDayAcknowledged,
           payment_method: payment,
           payment_option_name: getPaymentOption(payment, bankOptionId)?.name ?? null,
           items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })), checkout_session_id: checkoutSessionId.current || getOrCreateCheckoutSessionId(),
@@ -224,14 +256,16 @@ export function GuestCheckout() {
           <label>Mobile Number <em>Required</em><input required value={form.mobile_number} onChange={(event) => update('mobile_number', event.target.value)} /></label>
         </div></section>
         <section className="checkout-card"><h2>Delivery</h2>
-          <label>Delivery Method <em>Required</em><select value={delivery} onChange={(event) => changeDelivery(event.target.value as typeof delivery)}><option value="nationwide_delivery">Nationwide Delivery</option><option value="showroom_pickup">Showroom Pickup</option></select></label>
-          {delivery === 'nationwide_delivery' && <div className="checkout-grid">{(['house_unit', 'street', 'barangay', 'city_municipality', 'region', 'postal_code'] as const).map((key) => <label key={key}>{key.replaceAll('_', ' ')} <em>Required</em><input required value={form[key]} onChange={(event) => update(key, event.target.value)} /></label>)}</div>}
+          <label>Delivery Method <em>Required</em><select value={delivery} onChange={(event) => changeDelivery(event.target.value as typeof delivery)}><option value="nationwide_delivery">Standard Shipping</option><option value="same_day_delivery" disabled={!sameDayEligible}>Same-Day / On-Demand Delivery{sameDayEligible ? '' : ' — enter an eligible city first'}</option><option value="showroom_pickup">Showroom Pickup</option></select></label>
+          {delivery !== 'showroom_pickup' && !sameDayEligible && <p className="same-day-availability">Same-Day / On-Demand Delivery is unavailable for this delivery address. Metro Manila and selected nearby cities only. Pickup is from Pasay City.</p>}
+          {delivery !== 'showroom_pickup' && <div className="checkout-grid">{(['house_unit', 'street', 'barangay', 'city_municipality', 'region', 'postal_code'] as const).map((key) => <label key={key}>{key.replaceAll('_', ' ')} <em>Required</em><input required value={form[key]} onChange={(event) => update(key, event.target.value)} /></label>)}</div>}
+          {sameDay && <aside className="same-day-card"><strong>Same-Day / On-Demand Delivery</strong><b>Metro Manila & selected nearby cities only</b><p><b>Pickup origin: Pasay City</b><br />Courier cost depends on your delivery location. You book and pay your own Lalamove, Grab, or equivalent rider.</p><p className="same-day-warning">PLEASE <em>DO NOT</em> BOOK A RIDER YET.</p><p>We&apos;ll let you know once your package is ready for pickup.</p><p><b>{sameDayProcessingLabel() === 'same_day_processing' ? 'Same-Day Processing' : 'Next-Day Processing'}</b><br />Paid orders verified before 3:00 PM are processed for same-day pickup. Orders verified after 3:00 PM are processed the following day.</p><label className="checkout-check"><input type="checkbox" checked={sameDayAcknowledged} onChange={(event) => setSameDayAcknowledged(event.target.checked)} /> I understand that I should wait for the “Ready for Rider” confirmation before booking my courier.</label></aside>}
           <label>Order Notes <em>Optional</em><textarea value={form.order_notes} onChange={(event) => update('order_notes', event.target.value)} /></label>
         </section>
         <section className="checkout-card"><h2>Payment</h2>
           <p className="payment-choice-intro">Choose how you&apos;d like to pay.</p>
           <div className="payment-methods" role="radiogroup" aria-label="Payment method">
-            {paymentMethods.map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.description}</small></span></button>)}
+            {paymentMethods.filter((method) => !(sameDay && method.id === 'cash_on_delivery')).map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.description}</small></span></button>)}
           </div>
           {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><section><h3>Pay Now</h3><div><span>Shipping — {shippingQuote.shippingClass}</span><strong>{peso(shipping)}</strong></div><div><span>1% COD service fee</span><strong>{peso(codFee)}</strong></div><div className="cod-primary-amount"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div></section><section><h3>Pay Upon Delivery</h3><div><span>Merchandise subtotal</span><strong>{peso(subtotal)}</strong></div>{checkoutDiscount > 0 && <div><span>Launch Promo</span><strong>−{peso(checkoutDiscount)}</strong></div>}<div><span>Amount Due to Rider</span><strong>{peso(discountedMerchandise)}</strong></div></section><section className="cod-order-value"><h3>Order Value</h3><div><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></section></div>}
           {payment && proofNeeded && <PaymentQr method={payment} amount={dueNow} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
@@ -241,7 +275,7 @@ export function GuestCheckout() {
         </section>
         <section className="checkout-final-cta"><p className="eyebrow">Ready to submit your order?</p><SummarySubmit /></section>
       </div>
-      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name}{line.variant_name ? <small>{line.variant_group_name || 'Option'}: {line.variant_name}</small> : null}{line.is_clearance ? <small className="clearance-exclusion">Clearance Sale — additional promos excluded</small> : null} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{promoReservation.status === 'reserved' && promoReservation.discount > 0 && <div className="launch-promo-estimate"><strong>Launch Promo (10% Off)</strong><span>−{peso(promoReservation.discount)} secured for this checkout.</span></div>}{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(discountedMerchandise)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div>{promoReservation.status === 'reserved' && promoReservation.discount > 0 && <div><dt>Launch Promo (10% Off)</dt><dd>−{peso(promoReservation.discount)}</dd></div>}<div><dt>Shipping — {shippingQuote.shippingClass}</dt><dd>{peso(shipping)}</dd></div><div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
+      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name}{line.variant_name ? <small>{line.variant_group_name || 'Option'}: {line.variant_name}</small> : null}{line.is_clearance ? <small className="clearance-exclusion">Clearance Sale — additional promos excluded</small> : null} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{promoReservation.status === 'reserved' && promoReservation.discount > 0 && <div className="launch-promo-estimate"><strong>Launch Promo (10% Off)</strong><span>−{peso(promoReservation.discount)} secured for this checkout.</span></div>}{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(discountedMerchandise)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div>{promoReservation.status === 'reserved' && promoReservation.discount > 0 && <div><dt>Launch Promo (10% Off)</dt><dd>−{peso(promoReservation.discount)}</dd></div>}<div><dt>{sameDay ? 'Same-Day / On-Demand Delivery' : `Shipping — ${shippingQuote.shippingClass}`}</dt><dd>{peso(shipping)}</dd></div>{sameDay && <p className="same-day-summary-note">Courier fee paid directly to your rider.</p>}<div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
     </form>
   </section>
 }

@@ -22,6 +22,7 @@ type Order = {
   promo_discount: number | string
   payment_status: string
   order_status: string
+  same_day_processing?: string | null
   payment_proof_path: string | null
   telegram_notification_status: 'pending' | 'sent' | 'failed'
   telegram_notification_type: 'photo' | 'text-fallback' | 'text' | 'failed' | null
@@ -105,7 +106,7 @@ export function OrdersTable() {
   async function load() {
     let query = supabase
       .from('orders')
-      .select('id,order_reference,customer_name,mobile_number,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,shipping_fee,shipping_tier,promo_name,promo_discount,payment_status,order_status,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,is_test_order,archived_at,created_at,order_notes')
+      .select('id,order_reference,customer_name,mobile_number,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,shipping_fee,shipping_tier,promo_name,promo_discount,payment_status,order_status,same_day_processing,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,is_test_order,archived_at,created_at,order_notes')
       .order('created_at', { ascending: false })
     if (orderFilter === 'active') query = query.is('archived_at', null)
     if (orderFilter === 'archived') query = query.not('archived_at', 'is', null)
@@ -307,6 +308,11 @@ export function OrdersTable() {
     }
   }
 
+  async function copyReadyMessage(order: Order) {
+    const message = `Hi! Your Hydro Blasters MNL order #${order.order_reference} is paid, packed, and ready for rider pickup.\n\nYou may now book your Lalamove/Grab rider.\n\nPickup is from Pasay City. Please include your Order Number in the booking notes.\n\nThank you!`
+    try { await navigator.clipboard.writeText(message); setTelegramFeedback('Ready-for-rider message copied.') } catch { setError('Ready message could not be copied.') }
+  }
+
   async function setOrderFlag(order: Order, changes: Partial<Pick<Order, 'is_test_order' | 'archived_at'>>) {
     setError(null)
     try {
@@ -372,12 +378,14 @@ export function OrdersTable() {
         <td>{order.order_reference}</td>
         <td>{order.customer_name}<br />{order.mobile_number}</td>
         <td>{(orderItemsByOrder[order.id] ?? []).map((item, index) => <div key={`${item.product_name}-${index}`}>{item.product_name}{item.variant_name && <><br /><span className={styles.placeholderText}>{item.variant_group_name || 'Option'}: {item.variant_name}</span></>}<br /><span className={styles.placeholderText}>Qty {item.quantity}</span></div>)}</td>
-        <td>{order.delivery_method.replaceAll('_', ' ')}</td>
+        <td>{order.delivery_method === 'same_day_delivery' ? <><strong className={styles.status}>SAME-DAY / ON-DEMAND RIDER</strong><br />Pasay City pickup<br />{order.same_day_processing === 'next_day_processing' ? 'Next-day processing' : 'Same-day processing'}</> : order.delivery_method.replaceAll('_', ' ')}</td>
         <td>{order.payment_method.replaceAll('_', ' ')}{order.selected_payment_option_name && <><br />Bank selected: {order.selected_payment_option_name}</>}</td>
         <td>{Number(order.promo_discount) > 0 && <><strong>{order.promo_name || 'Launch Promo'}</strong><br />10% OFF · −₱{order.promo_discount}<br /></>}Shipping{order.shipping_tier ? ` — ${order.shipping_tier}` : ''} ₱{order.shipping_fee}<br />Amount due now ₱{order.upfront_amount}<br />Rider/showroom ₱{Number(order.rider_collectible_amount) || Number(order.showroom_payable_amount)}</td>
         <td>
           <select value={order.payment_status} onChange={(event) => void update(order, 'payment_status', event.target.value)}><option value="pending_verification">Pending verification</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select>
-          <select value={order.order_status} onChange={(event) => void update(order, 'order_status', event.target.value)}><option value="pending">Pending</option><option value="reservation_pending">Reservation pending</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option></select>
+          <select value={order.order_status} onChange={(event) => void update(order, 'order_status', event.target.value)}><option value="pending">Pending</option><option value="reservation_pending">Reservation pending</option><option value="confirmed">Confirmed</option>{order.delivery_method === 'same_day_delivery' && <option value="ready_for_rider">Ready for Rider</option>}<option value="cancelled">Cancelled</option></select>
+          {order.delivery_method === 'same_day_delivery' && order.order_status !== 'ready_for_rider' && (order.payment_status === 'verified' ? <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" onClick={() => { if (window.confirm(`Mark ${order.order_reference} ready for rider pickup?`)) void update(order, 'order_status', 'ready_for_rider') }}>Mark Ready for Rider</button> : <span className={styles.placeholderText}>Verify payment before Ready for Rider</span>)}
+          {order.delivery_method === 'same_day_delivery' && <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" onClick={() => void copyReadyMessage(order)}>Copy Ready Message</button>}
           <span className={styles.status}>Telegram {order.telegram_notification_status}</span>
           <span className={styles.status}>Type {order.telegram_notification_type ?? 'not recorded'}</span>
           <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" disabled={retryingOrderId === order.id} onClick={() => void resendTelegram(order)}>{retryingOrderId === order.id ? 'Resending…' : 'Resend Telegram Notification'}</button>

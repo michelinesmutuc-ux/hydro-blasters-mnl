@@ -29,6 +29,8 @@ Deno.serve(async (request) => {
     const url = Deno.env.get('SUPABASE_URL')!, serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const admin = createClient(url, serviceKey)
     const proofRequired = !((body.delivery_method === 'showroom_pickup') && body.payment_method === 'pay_upon_pickup')
+    if (body.delivery_method === 'same_day_delivery' && body.payment_method === 'cash_on_delivery') return reply({ error: 'Cash on Delivery is not available for Same-Day / On-Demand Delivery.' }, 400)
+    if (body.delivery_method === 'same_day_delivery' && !body.same_day_acknowledged) return reply({ error: 'Confirm that you will wait for the Ready for Rider confirmation.' }, 400)
     if (proofRequired && (!body.payment_proof?.base64 || !body.payment_proof?.contentType)) return reply({ error: 'A payment screenshot is required for this payment method.' }, 400)
     const allowed = ['image/jpeg','image/png','image/webp']
     if (proofRequired && !allowed.includes(body.payment_proof.contentType)) return reply({ error: 'Payment proof must be JPG, PNG, or WebP.' }, 400)
