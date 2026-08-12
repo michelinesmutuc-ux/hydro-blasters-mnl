@@ -7,6 +7,7 @@ import { deleteProductImages, uploadProductImages } from '../../lib/supabase/pro
 import { fetchAdminProduct, findAvailableProductSlug } from '../../lib/supabase/products'
 import { fetchProductSpecifications, normalizeSpecificationRows, replaceProductSpecifications } from '../../lib/supabase/product-specifications'
 import { fetchProductVariants, replaceProductVariants, validateVariants, type VariantDraft } from '../../lib/supabase/product-variants'
+import { fetchAdminAddonCandidates, fetchProductAddons, replaceProductAddons, type ProductAddon } from '../../lib/supabase/product-addons'
 import { markCatalogueWriteComplete, markCatalogueWritePending, markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
 import { GEL_BLASTER_TYPES, isGelBlasterCategory, isGelBlasterType, parseGelBlasterType, type GelBlasterType } from '../../lib/products/product-types'
@@ -63,7 +64,19 @@ export function ProductForm({ mode }: ProductFormProps) {
   const [specificationRows, setSpecificationRows] = useState<SpecificationRow[]>([])
   const [variantRows, setVariantRows] = useState<VariantDraft[]>([])
   const [loadedVariantImageUrls, setLoadedVariantImageUrls] = useState<string[]>([])
+  const [addonCandidates, setAddonCandidates] = useState<ProductAddon[]>([])
+  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([])
+  const [addonSearch, setAddonSearch] = useState('')
   const specificationRowsRef = useRef<SpecificationRow[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchAdminAddonCandidates().then(({ data, error: addonError }) => {
+      if (cancelled || addonError) return
+      setAddonCandidates((data ?? []) as ProductAddon[])
+    })
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -136,8 +149,15 @@ export function ProductForm({ mode }: ProductFormProps) {
         setIsLoadingProduct(false)
         return
       }
+      const { data: savedAddons, error: addonError } = await fetchProductAddons(data.id)
+      if (addonError) {
+        setError(`The product loaded, but its recommended add-ons could not be loaded. ${addonError.message}`)
+        setIsLoadingProduct(false)
+        return
+      }
       setVariantRows((variantData ?? []).map((variant) => ({ id: mode === 'add' ? crypto.randomUUID() : variant.id, name: variant.name, price: String(variant.price), stock: String(variant.stock), sku: variant.sku ?? '', image_url: mode === 'add' ? '' : variant.image_url ?? '' })))
       setLoadedVariantImageUrls(mode === 'add' ? [] : (variantData ?? []).map((variant) => variant.image_url).filter((url): url is string => Boolean(url)))
+      setSelectedAddonIds((savedAddons ?? []).map((addon) => addon.id))
       setExistingImageUrls(existingUrls)
       setLoadedImageUrls(existingUrls)
       setIsLoadingProduct(false)
@@ -401,6 +421,7 @@ export function ProductForm({ mode }: ProductFormProps) {
           const savedVariantRows = draft.hasVariants ? await prepareVariantImages(data.id, variantRows) : []
           await replaceProductSpecifications(data.id, submittedSpecificationRows)
           await replaceProductVariants(data.id, savedVariantRows)
+          await replaceProductAddons(data.id, selectedAddonIds)
         } catch (specificationError) {
           setError(`Product saved, but product details could not be saved. ${(specificationError as SupabaseError)?.message ?? 'Please retry.'}`)
           return
@@ -466,6 +487,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         const savedVariantRows = draft.hasVariants ? await prepareVariantImages(productId as string, variantRows) : []
         await replaceProductSpecifications(productId as string, submittedSpecificationRows)
         await replaceProductVariants(productId as string, savedVariantRows)
+        await replaceProductAddons(productId as string, selectedAddonIds)
         const currentVariantImageUrls = savedVariantRows.map((row) => row.image_url).filter((url): url is string => Boolean(url))
         const removedVariantImageUrls = loadedVariantImageUrls.filter((url) => !currentVariantImageUrls.includes(url) && !finalImageUrls.includes(url))
         if (removedVariantImageUrls.length > 0) {
@@ -498,6 +520,29 @@ export function ProductForm({ mode }: ProductFormProps) {
   }
 
   if (isLoadingProduct) return <p className={styles.emptyState}>Loading product…</p>
+
+  const selectedAddons = selectedAddonIds
+    .map((addonId) => addonCandidates.find((candidate) => candidate.id === addonId))
+    .filter((addon): addon is ProductAddon => Boolean(addon))
+  const normalizedAddonSearch = addonSearch.trim().toLocaleLowerCase()
+  const availableAddonCandidates = addonCandidates.filter((candidate) => {
+    if (candidate.id === productId || selectedAddonIds.includes(candidate.id)) return false
+    if (!normalizedAddonSearch) return true
+    return [candidate.name, candidate.brand ?? ''].some((value) => value.toLocaleLowerCase().includes(normalizedAddonSearch))
+  }).slice(0, 8)
+  const formatAddonPrice = (price: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(price))
+  const addRecommendedAddon = (addonId: string) => setSelectedAddonIds((current) => current.includes(addonId) ? current : [...current, addonId])
+  const removeRecommendedAddon = (addonId: string) => setSelectedAddonIds((current) => current.filter((currentId) => currentId !== addonId))
+  const moveRecommendedAddon = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction
+    if (nextIndex < 0 || nextIndex >= selectedAddonIds.length) return
+    setSelectedAddonIds((current) => {
+      const next = [...current]
+      const [addonId] = next.splice(index, 1)
+      next.splice(nextIndex, 0, addonId)
+      return next
+    })
+  }
 
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
@@ -548,6 +593,16 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={styles.specificationActions}><button type="button" className={styles.rowAction} onClick={() => moveVariantRow(index, -1)} disabled={isSaving || index === 0}>Move up</button><button type="button" className={styles.rowAction} onClick={() => moveVariantRow(index, 1)} disabled={isSaving || index === variantRows.length - 1}>Move down</button><button type="button" className={`${styles.rowAction} ${styles.rowDelete}`} onClick={() => removeVariantRow(row.id)} disabled={isSaving}>Remove</button></div>
         </div>)}</div>}
       </section>}
+      <section className={styles.formSection}>
+        <div className={styles.specificationHeader}><div><h2>Recommended Add-Ons</h2><p>Optional separate catalogue products. Their own price, stock, shipping class, and Clearance status are used at checkout.</p></div></div>
+        <div className={styles.addonPicker}>
+          <label className={styles.field}><span>Search existing products</span><input value={addonSearch} onChange={(event) => setAddonSearch(event.target.value)} placeholder="Search by product name or brand" disabled={isSaving} /></label>
+          {normalizedAddonSearch && <div className={styles.addonSearchResults}>{availableAddonCandidates.length > 0 ? availableAddonCandidates.map((candidate) => <button key={candidate.id} type="button" onClick={() => addRecommendedAddon(candidate.id)} disabled={isSaving}><span><strong>{candidate.name}</strong><small>{candidate.brand || candidate.category}{candidate.is_active ? '' : ' · Draft'}</small></span><b>+ {formatAddonPrice(candidate.price)}</b></button>) : <p>No matching products available to add.</p>}</div>}
+          <div className={styles.addonSelectedList}>
+            <strong>Selected</strong>
+            {selectedAddons.length === 0 ? <p>No recommended add-ons selected.</p> : selectedAddons.map((addon, index) => <div key={addon.id}><span><strong>{addon.name}</strong><small>{formatAddonPrice(addon.price)} · {addon.stock > 0 ? `${addon.stock} in stock` : 'Out of stock'}{addon.is_active ? '' : ' · Draft'}</small></span><div><button className={styles.rowAction} type="button" onClick={() => moveRecommendedAddon(index, -1)} disabled={isSaving || index === 0}>Move up</button><button className={styles.rowAction} type="button" onClick={() => moveRecommendedAddon(index, 1)} disabled={isSaving || index === selectedAddons.length - 1}>Move down</button><button className={`${styles.rowAction} ${styles.rowDelete}`} type="button" onClick={() => removeRecommendedAddon(addon.id)} disabled={isSaving}>Remove</button></div></div>)}</div>
+        </div>
+      </section>
       <section className={styles.formSection}>
         <div className={styles.specificationHeader}><div><h2>Specifications</h2><p>Add structured product details. Their displayed order is saved.</p></div><button className={styles.secondaryButton} type="button" onClick={() => { const next = [...specificationRowsRef.current, newSpecificationRow()]; specificationRowsRef.current = next; setSpecificationRows(next) }} disabled={isSaving}>Add specification</button></div>
         {specificationRows.length === 0 ? <p className={styles.specificationEmpty}>No specifications added yet.</p> : <div className={styles.specificationList}>{specificationRows.map((row, index) => <div className={styles.specificationRow} data-specification-row data-specification-id={row.id} key={row.id}>

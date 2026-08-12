@@ -5,8 +5,9 @@ import Link from 'next/link'
 import { ProductImageFrame } from './ProductImageFrame'
 import { CompareButton } from './CompareButton'
 import { ProductHelpCallout } from './ProductHelpCallout'
-import { useCart } from './CartProvider'
+import { useCart, type CartProduct } from './CartProvider'
 import type { ProductVariant } from '../lib/supabase/product-variants'
+import type { ProductAddon } from '../lib/supabase/product-addons'
 
 export type Product = {
   id: string
@@ -48,7 +49,7 @@ function ProductUnavailable() {
   return <section className="section product-unavailable"><p className="eyebrow">Product unavailable</p><h1>This product is not available</h1><p>The product may no longer exist or is not currently active.</p><a className="primary-button" href="/shop">Return to shop</a></section>
 }
 
-function ProductPurchaseActions({ product, variants, onVariantImageChange }: { product: Product; variants: ProductVariant[]; onVariantImageChange: (imageUrl: string | null) => void }) {
+function ProductPurchaseActions({ product, variants, recommendedAddons, onVariantImageChange }: { product: Product; variants: ProductVariant[]; recommendedAddons: ProductAddon[]; onVariantImageChange: (imageUrl: string | null) => void }) {
   const { add, lines, subtotal } = useCart()
   const [quantity, setQuantity] = useState(1)
   const [confirmation, setConfirmation] = useState<'cart' | 'buy' | null>(null)
@@ -56,6 +57,7 @@ function ProductPurchaseActions({ product, variants, onVariantImageChange }: { p
   const [buyingNow, setBuyingNow] = useState(false)
   const buyNowLock = useRef(false)
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null)
+  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([])
   const [selectionError, setSelectionError] = useState<string | null>(null)
   const selectedVariant = variants.find((variant) => variant.id === selectedVariantId) ?? null
   const hasVariants = Boolean(product.has_variants)
@@ -63,6 +65,30 @@ function ProductPurchaseActions({ product, variants, onVariantImageChange }: { p
   const unavailableReason = product.status === 'out_of_stock' ? 'Out of stock' : selectedVariant && selectedVariant.stock < 1 ? 'Out of stock' : !hasVariants && product.stock < 1 ? 'Out of stock' : ''
   const currentPrice = selectedVariant?.price ?? product.price
   const cartProduct = selectedVariant ? { ...product, id: `${product.id}:${selectedVariant.id}`, product_id: product.id, variant_id: selectedVariant.id, variant_group_name: product.variant_group_name ?? 'Option', variant_name: selectedVariant.name, price: selectedVariant.price, stock: selectedVariant.stock, image_urls: selectedVariant.image_url ? [selectedVariant.image_url] : product.image_urls ?? [] } : { ...product, image_urls: product.image_urls ?? [] }
+  const selectedAddons = recommendedAddons.filter((addon) => selectedAddonIds.includes(addon.id) && !addon.has_variants && addon.stock > 0)
+
+  function addSelectedAddons() {
+    selectedAddons.forEach((addon) => {
+      const addonCartProduct: CartProduct = {
+        id: addon.id,
+        product_id: addon.id,
+        name: addon.name,
+        slug: addon.slug,
+        category: addon.category,
+        price: addon.price,
+        stock: addon.stock,
+        shipping_class: addon.shipping_class ?? undefined,
+        is_clearance: addon.is_clearance,
+        image_urls: addon.image_urls ?? [],
+      }
+      add(addonCartProduct)
+    })
+  }
+
+  function addMainProductAndSelectedAddons() {
+    add(cartProduct, quantity)
+    addSelectedAddons()
+  }
 
   useEffect(() => {
     if (!reviewRequested) return
@@ -74,7 +100,7 @@ function ProductPurchaseActions({ product, variants, onVariantImageChange }: { p
   function addToCart() {
     if (hasVariants && !selectedVariant) { setSelectionError(`Please choose a ${product.variant_group_name || 'variant'} before continuing.`); return }
     if (unavailableReason) return
-    add(cartProduct, quantity)
+    addMainProductAndSelectedAddons()
     setConfirmation('cart')
   }
 
@@ -83,7 +109,7 @@ function ProductPurchaseActions({ product, variants, onVariantImageChange }: { p
     if (unavailableReason || buyingNow || buyNowLock.current || confirmation === 'buy') return
     buyNowLock.current = true
     setBuyingNow(true)
-    add(cartProduct, quantity)
+    addMainProductAndSelectedAddons()
     setReviewRequested(true)
   }
 
@@ -96,6 +122,7 @@ function ProductPurchaseActions({ product, variants, onVariantImageChange }: { p
   return <div className="product-purchase-actions">
     {hasVariants && <p className="product-variant-price">{selectedVariant ? peso(currentPrice) : `From ${peso(product.price)}`}</p>}
     {hasVariants && <fieldset className="variant-selector"><legend>Choose {product.variant_group_name || 'Option'}</legend><div>{variants.map((variant) => <button type="button" key={variant.id} className={selectedVariantId === variant.id ? 'variant-option variant-option-selected' : 'variant-option'} onClick={() => { setSelectedVariantId(variant.id); onVariantImageChange(variant.image_url || null); setSelectionError(null); setQuantity(1); setConfirmation(null) }} aria-pressed={selectedVariantId === variant.id} disabled={variant.stock < 1}>{variant.name}<small>{Number(variant.price).toLocaleString('en-PH', { style: 'currency', currency: 'PHP' })}{variant.stock < 1 ? ' · Out of Stock' : ''}</small></button>)}</div></fieldset>}
+    {recommendedAddons.length > 0 && <fieldset className="product-addon-selector"><legend>Complete Your Setup</legend><p>Optional add-ons for this model</p><div>{recommendedAddons.map((addon) => <article key={addon.id} className="product-addon-card">{addon.image_urls?.[0] ? <img src={addon.image_urls[0]} alt="" /> : <span className="product-addon-image-placeholder">Photo unavailable</span>}<div className="product-addon-copy"><strong>{addon.name}</strong><small>+{peso(addon.price)}</small>{addon.is_clearance && <em>Clearance Sale</em>}</div>{addon.has_variants ? <Link href={`/products/${addon.slug}`} className="product-addon-options">Choose Options</Link> : addon.stock > 0 ? <button type="button" className={selectedAddonIds.includes(addon.id) ? 'product-addon-selected' : ''} aria-pressed={selectedAddonIds.includes(addon.id)} onClick={() => setSelectedAddonIds((current) => current.includes(addon.id) ? current.filter((id) => id !== addon.id) : [...current, addon.id])}>{selectedAddonIds.includes(addon.id) ? 'Added' : 'Add'}</button> : <span className="product-addon-unavailable">Out of stock</span>}</article>)}</div></fieldset>}
     {selectionError && <p className="product-purchase-unavailable" role="status">{selectionError}</p>}
     {unavailableReason && selectedVariant && <p className="product-purchase-unavailable" role="status">{unavailableReason}</p>}
     <label className="product-quantity-control">Quantity<div><button type="button" aria-label={`Decrease ${product.name} quantity`} disabled={quantity <= 1 || !selectedVariant && hasVariants} onClick={() => changeQuantity(quantity - 1)}>−</button><output aria-label={`${product.name} quantity`}>{quantity}</output><button type="button" aria-label={`Increase ${product.name} quantity`} disabled={quantity >= availableStock || !selectedVariant && hasVariants} onClick={() => changeQuantity(Math.min(availableStock, quantity + 1))}>+</button></div></label>
@@ -104,7 +131,7 @@ function ProductPurchaseActions({ product, variants, onVariantImageChange }: { p
   </div>
 }
 
-export function ProductDetails({ product, specificationRows = [], variantRows = [], error }: { product: Product | null; specificationRows?: ProductSpecification[]; variantRows?: ProductVariant[]; error?: string | null }) {
+export function ProductDetails({ product, specificationRows = [], variantRows = [], recommendedAddons = [], error }: { product: Product | null; specificationRows?: ProductSpecification[]; variantRows?: ProductVariant[]; recommendedAddons?: ProductAddon[]; error?: string | null }) {
   const [selectedImage, setSelectedImage] = useState(0)
   const [selectedVariantImage, setSelectedVariantImage] = useState<string | null>(null)
 
@@ -130,7 +157,7 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
           <h1>{product.name}</h1>
           {!product.has_variants && <p className="product-price">{peso(product.price)}</p>}
           {product.is_clearance && <p className="product-clearance-note"><strong>Clearance Sale</strong><span>Additional promos excluded.</span></p>}
-          <ProductPurchaseActions product={product} variants={variantRows} onVariantImageChange={setSelectedVariantImage} />
+          <ProductPurchaseActions product={product} variants={variantRows} recommendedAddons={recommendedAddons} onVariantImageChange={setSelectedVariantImage} />
           <CompareButton product={{ ...product, image_urls: product.image_urls ?? [] }} />
           <dl className="product-detail-meta"><div><dt>Stock</dt><dd>{product.has_variants ? `${product.stock} across variants` : product.stock}</dd></div><div><dt>Availability</dt><dd>{product.stock > 0 ? 'In stock' : 'Out of stock'}</dd></div></dl>
           {product.short_description && <p className="product-short-description">{product.short_description}</p>}
