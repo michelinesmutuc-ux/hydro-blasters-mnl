@@ -36,10 +36,6 @@ type ProductCardProps = {
   actions?: ReactNode
 }
 
-function statusLabel(status: PublicProduct['status']) {
-  return status.replaceAll('_', ' ')
-}
-
 function peso(value: number | string) {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value))
 }
@@ -68,7 +64,7 @@ export function ProductCard({ product, actions }: ProductCardProps) {
             <div><dt>Brand</dt><dd>{product.brand || 'Not specified'}</dd></div>
             <div><dt>Price</dt><dd className="product-price-value">{product.has_variants ? `From ${peso(product.price)}` : peso(product.price)}</dd></div>
             <div><dt>Stock</dt><dd>{product.stock}</dd></div>
-            <div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div>
+            <div><dt>Availability</dt><dd>{product.stock > 0 ? 'In stock' : 'Out of stock'}</dd></div>
           </dl>
         <div className="product-card-footer">{product.has_variants ? <Link className="primary-button" href={productHref}>Choose Options</Link> : <AddToCartButton product={product} />}<div className="product-card-secondary-actions"><Link href={productHref}>View Product</Link><CompareButton product={product} compact /></div></div>
       </div>

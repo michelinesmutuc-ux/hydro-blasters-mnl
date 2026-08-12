@@ -33,10 +33,6 @@ export type ProductSpecification = {
   updated_at?: string
 }
 
-function statusLabel(status: Product['status']) {
-  return status.replaceAll('_', ' ')
-}
-
 function peso(value: number | string) {
   return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value))
 }
@@ -136,7 +132,7 @@ export function ProductDetails({ product, specificationRows = [], variantRows = 
           {product.is_clearance && <p className="product-clearance-note"><strong>Clearance Sale</strong><span>Additional promos excluded.</span></p>}
           <ProductPurchaseActions product={product} variants={variantRows} onVariantImageChange={setSelectedVariantImage} />
           <CompareButton product={{ ...product, image_urls: product.image_urls ?? [] }} />
-          <dl className="product-detail-meta"><div><dt>Stock</dt><dd>{product.has_variants ? `${product.stock} across variants` : product.stock}</dd></div><div><dt>Status</dt><dd>{statusLabel(product.status)}</dd></div></dl>
+          <dl className="product-detail-meta"><div><dt>Stock</dt><dd>{product.has_variants ? `${product.stock} across variants` : product.stock}</dd></div><div><dt>Availability</dt><dd>{product.stock > 0 ? 'In stock' : 'Out of stock'}</dd></div></dl>
           {product.short_description && <p className="product-short-description">{product.short_description}</p>}
           {inclusionParagraphs.length > 0 && <div className="product-description"><h2>Package Inclusions</h2>{inclusionParagraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</div>}
           <ProductHelpCallout specifications={specificationRows} />

@@ -21,13 +21,6 @@ type SupabaseError = { message?: string; code?: string; details?: string | null;
 type ProductDraft = ReturnType<typeof initialValues>
 type HighlightType = 'none' | 'new_arrival' | 'featured' | 'best_seller' | 'clearance_sale' | 'limited_stock'
 
-const statusOptions = [
-  { value: 'draft', label: 'Draft' },
-  { value: 'in_stock', label: 'In Stock' },
-  { value: 'out_of_stock', label: 'Out of Stock' },
-  { value: 'preorder', label: 'Pre-order' },
-]
-
 const highlightOptions: { value: HighlightType; label: string }[] = [
   { value: 'none', label: 'None — no badge' },
   { value: 'new_arrival', label: 'New Arrival' },
@@ -352,7 +345,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         product_type: isGelBlasterCategory(draft.category) && isGelBlasterType(draft.productType) ? draft.productType : null,
         price: effectivePrice,
         stock: effectiveStock,
-        status: draft.status,
+        status: draft.isActive ? 'in_stock' : 'draft',
         shipping_class: draft.shippingClass,
         short_description: draft.shortDescription.trim() || null,
         description: draft.description.trim() || null,
@@ -438,7 +431,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         product_type: isGelBlasterCategory(draft.category) && isGelBlasterType(draft.productType) ? draft.productType : null,
         price: effectivePrice,
         stock: effectiveStock,
-        status: draft.status,
+        status: draft.isActive ? 'in_stock' : 'draft',
         shipping_class: draft.shippingClass,
         short_description: draft.shortDescription.trim() || null,
         description: draft.description.trim() || null,
@@ -519,11 +512,8 @@ export function ProductForm({ mode }: ProductFormProps) {
           {isGelBlasterCategory(draft.category) && <div className={styles.field}><label htmlFor="product-type">Type</label><select id="product-type" value={draft.productType} onChange={(event) => update('productType', event.target.value as GelBlasterType | '')}><option value="">Select Type</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{productType}</option>)}</select><span className={styles.slugHint}>{mode === 'add' ? 'Required for new Gel Blaster products.' : 'Optional for existing products until you classify them.'}</span></div>}
           <div className={styles.field}><label htmlFor="price">Price</label><input id="price" required min="0" step="0.01" type="number" value={draft.price} disabled={draft.hasVariants} onChange={(event) => update('price', event.target.value)} />{draft.hasVariants && <span className={styles.slugHint}>Calculated from the lowest variant price.</span>}</div>
           <div className={styles.field}><label htmlFor="stock">Stock</label><input id="stock" required min="0" step="1" type="number" value={draft.stock} disabled={draft.hasVariants} onChange={(event) => update('stock', event.target.value)} />{draft.hasVariants && <span className={styles.slugHint}>Calculated from total variant stock.</span>}</div>
-          <div className={styles.field}><label htmlFor="status">Status</label><select id="status" value={draft.status} onChange={(event) => update('status', event.target.value)}>{statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}</select></div>
+          <div className={styles.field}><label htmlFor="publication-status">Publication Status</label><select id="publication-status" value={draft.isActive ? 'published' : 'draft'} onChange={(event) => update('isActive', event.target.value === 'published')}><option value="published">Published</option><option value="draft">Draft</option></select><span className={styles.slugHint}>Controls public visibility only. It never changes stock.</span></div>
           <div className={styles.field}><label htmlFor="shipping-class">Shipping Class</label><select id="shipping-class" value={draft.shippingClass} onChange={(event) => update('shippingClass', event.target.value as ShippingClass)}>{shippingClassOptions.map((shippingClass) => <option key={shippingClass.value} value={shippingClass.value}>{shippingClass.label}</option>)}</select><span className={styles.slugHint}>Calculated from the full cart at checkout.</span></div>
-          <div className={`${styles.toggleRow} ${styles.fieldFull}`}>
-            <label className={styles.toggle}><span><strong>Active</strong><span>Show this product on the public website.</span></span><input className={styles.switch} type="checkbox" checked={draft.isActive} onChange={(event) => update('isActive', event.target.checked)} /></label>
-          </div>
           <div className={`${styles.highlightToggleSection} ${styles.fieldFull}`}>
             <span className={styles.fieldLegend}>Product Highlights</span>
             <div className={styles.toggleRow}>

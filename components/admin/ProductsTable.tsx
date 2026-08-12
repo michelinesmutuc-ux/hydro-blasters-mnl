@@ -43,17 +43,17 @@ type ProductFilters = {
   sort: 'newest' | 'updated' | 'name-asc' | 'name-desc' | 'price-asc' | 'price-desc'
 }
 
-type QuickProductStatus = 'in_stock' | 'draft'
+type QuickPublicationStatus = 'published' | 'draft'
 type ProductHighlightDraft = { is_clearance: boolean; is_best_seller: boolean; featured: boolean }
 
-const columns = ['Thumbnail', 'Product Name', 'Brand', 'Category', 'Shipping Class', 'Price', 'Stock', 'Product Status', 'Highlights', 'Actions']
+const columns = ['Thumbnail', 'Product Name', 'Brand', 'Category', 'Shipping Class', 'Price', 'Stock', 'Publication Status', 'Highlights', 'Actions']
 
-function quickStatusForProduct(product: Product): QuickProductStatus {
-  return product.is_active ? 'in_stock' : 'draft'
+function quickPublicationForProduct(product: Product): QuickPublicationStatus {
+  return product.is_active ? 'published' : 'draft'
 }
 
-function quickStatusLabel(status: QuickProductStatus) {
-  return status === 'in_stock' ? 'IN STOCK' : 'DRAFT'
+function quickPublicationLabel(status: QuickPublicationStatus) {
+  return status === 'published' ? 'PUBLISHED' : 'DRAFT'
 }
 
 export function ProductsTable() {
@@ -77,7 +77,7 @@ export function ProductsTable() {
   const [savingShippingClassId, setSavingShippingClassId] = useState<string | null>(null)
   const [editingStatusId, setEditingStatusId] = useState<string | null>(null)
   const [savingStatusId, setSavingStatusId] = useState<string | null>(null)
-  const [statusDrafts, setStatusDrafts] = useState<Record<string, QuickProductStatus>>({})
+  const [statusDrafts, setStatusDrafts] = useState<Record<string, QuickPublicationStatus>>({})
   const [editingHighlightsId, setEditingHighlightsId] = useState<string | null>(null)
   const [savingHighlightsId, setSavingHighlightsId] = useState<string | null>(null)
   const [highlightDrafts, setHighlightDrafts] = useState<Record<string, ProductHighlightDraft>>({})
@@ -370,24 +370,24 @@ export function ProductsTable() {
   function startEditingStatus(product: Product) {
     setError(null)
     setNotice(null)
-    setStatusDrafts((current) => ({ ...current, [product.id]: quickStatusForProduct(product) }))
+    setStatusDrafts((current) => ({ ...current, [product.id]: quickPublicationForProduct(product) }))
     setEditingStatusId(product.id)
   }
 
   function cancelEditingStatus(product: Product) {
-    setStatusDrafts((current) => ({ ...current, [product.id]: quickStatusForProduct(product) }))
+    setStatusDrafts((current) => ({ ...current, [product.id]: quickPublicationForProduct(product) }))
     setEditingStatusId(null)
     setError(null)
   }
 
-  async function saveStatus(product: Product, nextStatus: QuickProductStatus) {
+  async function saveStatus(product: Product, nextStatus: QuickPublicationStatus) {
     if (savingStatusId === product.id || statusSaveLock.current === product.id) return
-    if (nextStatus === quickStatusForProduct(product)) {
+    if (nextStatus === quickPublicationForProduct(product)) {
       cancelEditingStatus(product)
       return
     }
 
-    const nextIsActive = nextStatus === 'in_stock'
+    const nextIsActive = nextStatus === 'published'
     statusSaveLock.current = product.id
     setSavingStatusId(product.id)
     setError(null)
@@ -396,7 +396,8 @@ export function ProductsTable() {
       await requireAdminSession()
       const { data, error: updateError } = await supabase
         .from('products')
-        .update({ is_active: nextIsActive, status: nextStatus, updated_at: new Date().toISOString() })
+        // Publication changes must never carry or infer an inventory value.
+        .update({ is_active: nextIsActive, status: nextIsActive ? 'in_stock' : 'draft', updated_at: new Date().toISOString() })
         .eq('id', product.id)
         .select('id,is_active,status')
         .single()
@@ -405,13 +406,13 @@ export function ProductsTable() {
       setProducts((current) => current.map((currentProduct) => currentProduct.id === product.id
         ? { ...currentProduct, is_active: data.is_active, status: data.status as Product['status'] }
         : currentProduct))
-      setStatusDrafts((current) => ({ ...current, [product.id]: data.is_active ? 'in_stock' : 'draft' }))
+      setStatusDrafts((current) => ({ ...current, [product.id]: data.is_active ? 'published' : 'draft' }))
       setEditingStatusId(null)
       markWebsiteChangesUnpublished()
-      setNotice(`Product Status saved as ${data.is_active ? 'IN STOCK' : 'DRAFT'}. Publish the website to update the public storefront.`)
+      setNotice(`Publication Status saved as ${data.is_active ? 'PUBLISHED' : 'DRAFT'}. Publish the website to update the public storefront.`)
     } catch (caught) {
-      setStatusDrafts((current) => ({ ...current, [product.id]: quickStatusForProduct(product) }))
-      setError(`Product Status for ${product.name} was not saved. ${caught instanceof Error ? caught.message : 'Please try again.'}`)
+      setStatusDrafts((current) => ({ ...current, [product.id]: quickPublicationForProduct(product) }))
+      setError(`Publication Status for ${product.name} was not saved. ${caught instanceof Error ? caught.message : 'Please try again.'}`)
     } finally {
       statusSaveLock.current = null
       setSavingStatusId(null)
@@ -539,7 +540,7 @@ export function ProductsTable() {
           <div className={styles.productFilterGrid}>
             <label>Category<select value={filters.category} onChange={(event) => updateCategoryFilter(event.target.value)}><option value="">All Categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
             {isGelBlasterCategory(filters.category) && <label>Type<select value={filters.productType} onChange={(event) => updateFilter('productType', event.target.value as GelBlasterType | '')}><option value="">All Types</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select></label>}
-            <label>Status<select value={filters.publication} onChange={(event) => updateFilter('publication', event.target.value as ProductFilters['publication'])}><option value="all">All Statuses</option><option value="published">In Stock</option><option value="inactive">Draft</option></select></label>
+            <label>Publication Status<select value={filters.publication} onChange={(event) => updateFilter('publication', event.target.value as ProductFilters['publication'])}><option value="all">All Publication Statuses</option><option value="published">Published</option><option value="inactive">Draft</option></select></label>
             <label>Highlights<select value={filters.highlight} onChange={(event) => updateFilter('highlight', event.target.value as ProductFilters['highlight'])}><option value="all">All Highlights</option><option value="clearance_sale">Clearance Sale</option><option value="best_seller">Best Seller</option><option value="featured">Featured</option></select></label>
             <label>Stock<select value={filters.stock} onChange={(event) => updateFilter('stock', event.target.value as ProductFilters['stock'])}><option value="all">All Stock</option><option value="in-stock">In Stock (5+)</option><option value="low-stock">Low Stock (1–4)</option><option value="out-of-stock">Out of Stock</option></select></label>
             <label>Sort<select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as ProductFilters['sort'])}><option value="newest">Newest Added</option><option value="updated">Recently Updated</option><option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="price-asc">Price Low–High</option><option value="price-desc">Price High–Low</option></select></label>
@@ -563,7 +564,7 @@ export function ProductsTable() {
         const shippingClassDraft = shippingClassDrafts[product.id] ?? normalizeShippingClass(product.shipping_class)
         const statusIsEditing = editingStatusId === product.id
         const statusIsSaving = savingStatusId === product.id
-        const statusDraft = statusDrafts[product.id] ?? quickStatusForProduct(product)
+        const statusDraft = statusDrafts[product.id] ?? quickPublicationForProduct(product)
         const highlightsIsEditing = editingHighlightsId === product.id
         const highlightsIsSaving = savingHighlightsId === product.id
         const highlightsDraft = highlightDrafts[product.id] ?? highlightDraftForProduct(product)
@@ -576,7 +577,7 @@ export function ProductsTable() {
           <td>{shippingClassIsEditing ? <div className={styles.categoryEditor}><select aria-label={`${product.name} Shipping Class`} value={shippingClassDraft} disabled={shippingClassIsSaving} onChange={(event) => setShippingClassDrafts((current) => ({ ...current, [product.id]: event.target.value as ShippingClass }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveShippingClass(product, shippingClassDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingShippingClass(product) } }}>{shippingClassOptions.map((shippingClass) => <option key={shippingClass.value} value={shippingClass.value}>{shippingClass.value}</option>)}</select><div><button type="button" disabled={shippingClassIsSaving} onClick={() => void saveShippingClass(product, shippingClassDraft)}>{shippingClassIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={shippingClassIsSaving} onClick={() => cancelEditingShippingClass(product)}>Cancel</button></div></div> : <div className={styles.categoryDisplay}><span>{normalizeShippingClass(product.shipping_class)}</span><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} Shipping Class`} title="Quick edit Shipping Class" onClick={() => startEditingShippingClass(product)}>✎</button></div>}</td>
           <td>{product.has_variants ? <div className={styles.variantPriceSummary}><strong>From {formatPrice(product.price)}</strong><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Edit Variant Prices</a></div> : priceIsEditing ? <div className={styles.priceEditor}><input aria-label={`${product.name} price`} type="text" inputMode="decimal" value={priceDraft} disabled={priceIsSaving} onChange={(event) => setPriceDrafts((current) => ({ ...current, [product.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void savePrice(product, priceDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingPrice(product) } }} /><div><button type="button" disabled={priceIsSaving} onClick={() => void savePrice(product, priceDraft)}>{priceIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={priceIsSaving} onClick={() => cancelEditingPrice(product)}>Cancel</button></div></div> : <div className={styles.priceDisplay}><strong>{formatPrice(product.price)}</strong><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} price`} title="Quick edit price" onClick={() => startEditingPrice(product)}>✎</button></div>}</td>
           <td>{product.has_variants ? <div className={styles.variantStockSummary}><span>{variantCounts[product.id] ?? 0} Variant{variantCounts[product.id] === 1 ? '' : 's'}</span><strong>{product.stock} total</strong><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Manage Variants</a></div> : <div className={styles.stockControl}><div><button type="button" aria-label={`Decrease ${product.name} stock`} disabled={stockIsSaving || product.stock === 0} onClick={() => void saveStock(product, String(product.stock - 1))}>−</button><input aria-label={`${product.name} stock`} inputMode="numeric" pattern="[0-9]*" value={stockDraft} disabled={stockIsSaving} onChange={(event) => setStockDrafts((current) => ({ ...current, [product.id]: event.target.value }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveStock(product, stockDraft) } if (event.key === 'Escape') { event.preventDefault(); setStockDrafts((current) => ({ ...current, [product.id]: String(product.stock) })); event.currentTarget.blur() } }} onBlur={() => { if (stockDraft !== String(product.stock)) void saveStock(product, stockDraft) }} /><button type="button" aria-label={`Increase ${product.name} stock`} disabled={stockIsSaving} onClick={() => void saveStock(product, String(product.stock + 1))}>+</button></div><span className={stockInfo.tone}>{stockIsSaving ? 'Saving…' : stockInfo.label}</span></div>}</td>
-          <td>{statusIsEditing ? <div className={styles.categoryEditor}><select aria-label={`${product.name} Product Status`} value={statusDraft} disabled={statusIsSaving} onChange={(event) => setStatusDrafts((current) => ({ ...current, [product.id]: event.target.value as QuickProductStatus }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveStatus(product, statusDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingStatus(product) } }}><option value="in_stock">IN STOCK</option><option value="draft">DRAFT</option></select><div><button type="button" disabled={statusIsSaving} onClick={() => void saveStatus(product, statusDraft)}>{statusIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={statusIsSaving} onClick={() => cancelEditingStatus(product)}>Cancel</button></div></div> : <div className={styles.categoryDisplay}><span className={`${styles.status} ${product.is_active ? styles.statusActive : ''}`}>{quickStatusLabel(quickStatusForProduct(product))}</span><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} Product Status`} title="Quick edit Product Status" disabled={isWorking} onClick={() => startEditingStatus(product)}>✎</button></div>}</td>
+          <td>{statusIsEditing ? <div className={styles.categoryEditor}><select aria-label={`${product.name} Publication Status`} value={statusDraft} disabled={statusIsSaving} onChange={(event) => setStatusDrafts((current) => ({ ...current, [product.id]: event.target.value as QuickPublicationStatus }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveStatus(product, statusDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingStatus(product) } }}><option value="published">PUBLISHED</option><option value="draft">DRAFT</option></select><div><button type="button" disabled={statusIsSaving} onClick={() => void saveStatus(product, statusDraft)}>{statusIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={statusIsSaving} onClick={() => cancelEditingStatus(product)}>Cancel</button></div></div> : <div className={styles.categoryDisplay}><span className={`${styles.status} ${product.is_active ? styles.statusActive : ''}`}>{quickPublicationLabel(quickPublicationForProduct(product))}</span><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} Publication Status`} title="Quick edit Publication Status" disabled={isWorking} onClick={() => startEditingStatus(product)}>✎</button></div>}</td>
           <td>{highlightsIsEditing ? <div className={styles.highlightsEditor}><label><input type="checkbox" checked={highlightsDraft.is_clearance} disabled={highlightsIsSaving} onChange={(event) => setHighlightDrafts((current) => ({ ...current, [product.id]: { ...highlightsDraft, is_clearance: event.target.checked } }))} />Clearance Sale</label><label><input type="checkbox" checked={highlightsDraft.is_best_seller} disabled={highlightsIsSaving} onChange={(event) => setHighlightDrafts((current) => ({ ...current, [product.id]: { ...highlightsDraft, is_best_seller: event.target.checked } }))} />Best Seller</label><label><input type="checkbox" checked={highlightsDraft.featured} disabled={highlightsIsSaving} onChange={(event) => setHighlightDrafts((current) => ({ ...current, [product.id]: { ...highlightsDraft, featured: event.target.checked } }))} />Featured</label><div><button type="button" disabled={highlightsIsSaving} onClick={() => void saveHighlights(product, highlightsDraft)}>{highlightsIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={highlightsIsSaving} onClick={() => cancelEditingHighlights(product)}>Cancel</button></div></div> : <div className={styles.highlightsDisplay}><span className={styles.highlightSummary}>{highlightLabels.length ? highlightLabels.join(' · ') : 'None'}</span><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} highlights`} title="Quick edit highlights" disabled={isWorking} onClick={() => startEditingHighlights(product)}>✎</button></div>}</td>
           <td><div className={styles.tableActions}><a className={styles.tableAction} href={`/admin/products/edit?id=${product.id}`}>Edit</a><button className={styles.tableAction} type="button" disabled={isWorking} onClick={() => duplicateProduct(product)}>{isWorking ? 'Working…' : 'Duplicate'}</button><button className={`${styles.tableAction} ${styles.deleteAction}`} type="button" disabled={isWorking} onClick={() => deleteProduct(product)}>{isWorking ? 'Working…' : 'Delete'}</button></div></td>
         </tr>
