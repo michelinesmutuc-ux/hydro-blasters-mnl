@@ -57,7 +57,7 @@ Deno.serve(async (request) => {
     }
 
     const order = data[0]
-    const { data: savedOrder, error: savedOrderError } = await admin.from('orders').select('payment_proof_path').eq('id', order.order_id).single()
+    const { data: savedOrder, error: savedOrderError } = await admin.from('orders').select('payment_proof_path,shipping_tier').eq('id', order.order_id).single()
     if (savedOrderError || !savedOrder) {
       if (temporaryProofPath) await admin.storage.from('payment-proofs').remove([temporaryProofPath])
       return reply({ error: 'Order could not be finalized. Please try again.' }, 500)
@@ -89,6 +89,6 @@ Deno.serve(async (request) => {
 
     EdgeRuntime.waitUntil(triggerOrderNotification(admin, url, serviceKey, order))
 
-    return reply({ order: { ...order, payment_status: 'pending_verification' } }, 201)
+    return reply({ order: { ...order, payment_status: 'pending_verification', shipping_tier: savedOrder.shipping_tier } }, 201)
   } catch { return reply({ error: 'Checkout could not be completed. Please try again.' }, 500) }
 })

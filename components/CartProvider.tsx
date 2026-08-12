@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
-export type CartProduct = { id: string; product_id?: string; name: string; slug: string; category?: string; price: number | string; stock: number; shipping_class?: 'Compact' | 'Standard' | 'Bulky'; is_clearance?: boolean; image_urls?: string[]; variant_id?: string; variant_group_name?: string | null; variant_name?: string | null }
+export type CartProduct = { id: string; product_id?: string; name: string; slug: string; category?: string; price: number | string; stock: number; shipping_class?: 'Compact' | 'Medium' | 'Bulky'; is_clearance?: boolean; image_urls?: string[]; variant_id?: string; variant_group_name?: string | null; variant_name?: string | null }
 export type CartLine = CartProduct & { quantity: number }
 type Cart = { lines: CartLine[]; add: (product: CartProduct, quantity?: number) => void; setQuantity: (id: string, quantity: number) => void; remove: (id: string) => void; clear: () => void; subtotal: number }
 const CartContext = createContext<Cart | null>(null)
