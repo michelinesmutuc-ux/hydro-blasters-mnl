@@ -1,4 +1,4 @@
-export type HomepageHighlightType = 'none' | 'new_arrival' | 'best_seller' | 'clearance_sale' | 'limited_stock'
+export type HomepageHighlightType = 'none' | 'new_arrival' | 'limited_stock'
 
 /**
  * New Arrivals are intentionally manual. A product is a New Arrival only when
@@ -10,6 +10,6 @@ export function isNewArrival(product: { show_on_homepage?: boolean | null; highl
 }
 
 export function normalizeHomepageHighlightType(value: string | null | undefined): HomepageHighlightType {
-  if (value === 'new_arrival' || value === 'best_seller' || value === 'clearance_sale' || value === 'limited_stock') return value
+  if (value === 'new_arrival' || value === 'limited_stock') return value
   return 'none'
 }

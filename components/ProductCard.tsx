@@ -8,7 +8,7 @@ import { AddToCartButton } from './AddToCartButton'
 import { CompareButton } from './CompareButton'
 import type { GelBlasterType } from '../lib/products/product-types'
 
-export type HomepageHighlightType = 'new_arrival' | 'featured' | 'best_seller' | 'clearance_sale' | 'limited_stock'
+export type HomepageHighlightType = 'new_arrival' | 'best_seller' | 'clearance_sale' | 'limited_stock'
 
 export type PublicProduct = {
   id: string
@@ -50,13 +50,14 @@ const highlightLabels: Record<HomepageHighlightType, string> = {
 export function ProductCard({ product, actions }: ProductCardProps) {
   const imageUrl = product.image_urls[0]
   const productHref = getProductUrl(product)
+  const homepageBadge = product.highlight_type && product.highlight_type in highlightLabels ? product.highlight_type : null
   return (
     <article className="product-card">
       <Link className="shop-product-link" href={productHref} aria-label={`View ${product.name}`}>
         <ProductImageFrame src={imageUrl} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="card" />
       </Link>
       <div className="product-card-body">
-        {product.is_clearance ? <span className="product-highlight-badge product-highlight-clearance_sale">Clearance Sale</span> : product.highlight_type && product.highlight_type !== 'featured' && <span className={`product-highlight-badge product-highlight-${product.highlight_type}`}>{highlightLabels[product.highlight_type]}</span>}
+        {product.is_clearance ? <span className="product-highlight-badge product-highlight-clearance_sale">Clearance Sale</span> : homepageBadge && <span className={`product-highlight-badge product-highlight-${homepageBadge}`}>{highlightLabels[homepageBadge]}</span>}
         <p className="placeholder-label">{product.category}</p>
         <h2><Link className="product-card-title-link" href={productHref}>{product.name}</Link></h2>
           <dl className="product-meta">

@@ -26,8 +26,6 @@ type HighlightType = HomepageHighlightType
 const highlightOptions: { value: HighlightType; label: string }[] = [
   { value: 'none', label: 'None — no badge' },
   { value: 'new_arrival', label: 'New Arrival' },
-  { value: 'best_seller', label: 'Best Seller' },
-  { value: 'clearance_sale', label: 'Clearance Sale' },
   { value: 'limited_stock', label: 'Limited Stock' },
 ]
 
@@ -568,7 +566,7 @@ export function ProductForm({ mode }: ProductFormProps) {
             <label className={styles.toggle}><span><strong>This product has variants</strong><span>Use one option group, such as Color or Package.</span></span><input className={styles.switch} type="checkbox" checked={draft.hasVariants} onChange={(event) => update('hasVariants', event.target.checked)} /></label>
           </div>
           <div className={`${styles.toggleRow} ${styles.fieldFull}`}>
-            <label className={styles.toggle}><span><strong>Show in Homepage Highlights</strong><span>Manually place this product in the homepage Featured Products section</span></span><input className={styles.switch} type="checkbox" checked={draft.showOnHomepage} onChange={(event) => update('showOnHomepage', event.target.checked)} /></label>
+            <label className={styles.toggle}><span><strong>Show in Homepage Highlights</strong><span>Manually place this product in the homepage product section.</span></span><input className={styles.switch} type="checkbox" checked={draft.showOnHomepage} onChange={(event) => update('showOnHomepage', event.target.checked)} /></label>
           </div>
           {draft.showOnHomepage && <div className={`${styles.highlightControls} ${styles.fieldFull}`}>
             <div className={styles.field}><label htmlFor="highlight-type">Highlight Type</label><select id="highlight-type" required value={draft.highlightType} onChange={(event) => update('highlightType', event.target.value as HighlightType)}>{highlightOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><span className={styles.slugHint}>Choose None to include the product without a homepage badge.</span></div>

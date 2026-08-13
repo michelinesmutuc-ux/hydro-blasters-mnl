@@ -69,11 +69,14 @@ export function ShopProducts() {
 
   useEffect(() => {
     isApplyingUrlState.current = true
-    const nextFilters = filtersFromUrl(new URLSearchParams(searchQuery))
+    const queryParams = new URLSearchParams(searchQuery)
+    const nextFilters = filtersFromUrl(queryParams)
     setFilters(nextFilters)
     // `status` was an old public filter for an internal admin field. Ignore it
     // completely and clean legacy links without changing the visible catalogue.
-    if (new URLSearchParams(searchQuery).has('status')) updateShopUrl(nextFilters)
+    // `featured` is deliberately retired rather than being reinterpreted as
+    // New Arrivals: the two manual product states are not equivalent.
+    if (queryParams.has('status') || queryParams.get('highlight') === 'featured') updateShopUrl(nextFilters)
     setUrlReady(true)
   }, [searchQuery])
 
