@@ -31,7 +31,7 @@ type Order = {
   telegram_notification_attempted_at: string | null
 }
 
-type OrderItem = { product_name: string; variant_group_name: string | null; variant_name: string | null; quantity: number; line_total: number | string }
+type OrderItem = { product_id: string; product_name: string; variant_group_name: string | null; variant_name: string | null; quantity: number; line_total: number | string }
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -88,11 +88,37 @@ function getNotificationHeading(paymentMethod: string) {
   return '🏠 <b>NEW SHOWROOM ORDER</b>'
 }
 
-function getPaymentCaptionLabel(paymentMethod: string) {
-  if (paymentMethod === 'gcash') return '🔵 <b>Payment</b>'
-  if (paymentMethod === 'bank_transfer') return '🏦 <b>Payment</b>'
-  if (paymentMethod === 'cash_on_delivery') return '🚚 <b>Payment</b>'
-  return '💳 <b>Payment</b>'
+function formatOrderedItems(items: OrderItem[], brandsByProductId: Map<string, string | null>) {
+  return items.map((item) => {
+    const brand = brandsByProductId.get(item.product_id)
+    const includesBrand = Boolean(brand && item.product_name.toLocaleLowerCase().startsWith(brand.toLocaleLowerCase()))
+    const itemName = [includesBrand ? null : brand, item.product_name].filter(Boolean).map(escapeTelegramHtml).join(' ')
+    const variant = item.variant_name ? ` — ${escapeTelegramHtml(item.variant_name)}` : ''
+    return `• ${item.quantity}× ${itemName}${variant} — ${peso(item.line_total)}`
+  }).join('\n')
+}
+
+function formatOrderSummary(order: Order, itemLines: string) {
+  const address = [order.city_municipality, order.region].filter(Boolean).join(', ') || 'Not provided'
+  const amountLines = [
+    `<b>Merchandise</b>: ${peso(order.merchandise_subtotal)}`,
+    Number(order.promo_discount) > 0 ? `<b>${escapeTelegramHtml(order.promo_name || 'Launch Promo')}</b>: −${peso(order.promo_discount)}` : null,
+    Number(order.shipping_fee) > 0 ? `<b>Shipping${order.shipping_tier ? ` (${escapeTelegramHtml(order.shipping_tier)})` : ''}</b>: ${peso(order.shipping_fee)}` : null,
+    Number(order.cod_service_fee) > 0 ? `<b>COD fee</b>: ${peso(order.cod_service_fee)}` : null,
+    `<b>Overall total</b>: ${peso(order.overall_total)}`,
+    order.payment_method === 'pay_upon_pickup'
+      ? `<b>Amount Due at Showroom</b>: ${peso(order.showroom_payable_amount)}`
+      : `<b>Amount Due Now</b>: ${peso(order.upfront_amount)}`,
+    order.payment_method === 'cash_on_delivery' ? `<b>Amount Due to Rider</b>: ${peso(order.rider_collectible_amount)}` : null,
+  ].filter(Boolean).join('\n')
+  const paymentLine = order.payment_method === 'bank_transfer' && order.selected_payment_option_name
+    ? `${readable(order.payment_method)} (${escapeTelegramHtml(order.selected_payment_option_name)})`
+    : readable(order.payment_method)
+  const sameDayNote = order.delivery_method === 'same_day_delivery'
+    ? `\n\n🚚 <b>SAME-DAY / ON-DEMAND DELIVERY</b>\nCustomer books and pays rider. Pickup origin: Pasay City.\nDo not book rider until package is marked Ready for Rider.\n${order.same_day_processing === 'next_day_processing' ? '<b>NEXT-DAY PROCESSING</b>' : '<b>SAME-DAY PROCESSING</b>'}`
+    : ''
+
+  return `${getNotificationHeading(order.payment_method)}\n\n🧾 <b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n\n<b>ITEMS ORDERED</b>\n${itemLines}\n\n👤 <b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}${sameDayNote}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\nReview this order in Admin Orders.`
 }
 
 Deno.serve(async (request) => {
@@ -154,41 +180,20 @@ Deno.serve(async (request) => {
 
     const { data: items, error: itemsError } = await admin
       .from('order_items')
-      .select('product_name,variant_group_name,variant_name,quantity,line_total')
+      .select('product_id,product_name,variant_group_name,variant_name,quantity,line_total')
       .eq('order_id', order.id)
     if (itemsError || !items?.length) throw itemsError ?? new Error('Order items are missing.')
     console.info('Order Telegram items loaded.', { orderId: order.id, orderReference: order.order_reference, itemCount: items.length })
 
-    const itemLines = (items as OrderItem[]).map((item) => {
-      const variant = item.variant_name ? `\n  ${escapeTelegramHtml(item.variant_group_name || 'Option')}: ${escapeTelegramHtml(item.variant_name)}` : ''
-      return `• ${escapeTelegramHtml(item.product_name)}${variant}\n  × ${item.quantity} — ${peso(item.line_total)}`
-    }).join('\n')
-    const address = [order.city_municipality, order.region].filter(Boolean).join(', ') || 'Not provided'
-    const amountLines = [
-      `<b>Merchandise</b>: ${peso(order.merchandise_subtotal)}`,
-      Number(order.promo_discount) > 0 ? `<b>${escapeTelegramHtml(order.promo_name || 'Launch Promo')}</b>: −${peso(order.promo_discount)}` : null,
-      Number(order.shipping_fee) > 0 ? `<b>Shipping${order.shipping_tier ? ` (${escapeTelegramHtml(order.shipping_tier)})` : ''}</b>: ${peso(order.shipping_fee)}` : null,
-      Number(order.cod_service_fee) > 0 ? `<b>COD fee</b>: ${peso(order.cod_service_fee)}` : null,
-      `<b>Overall total</b>: ${peso(order.overall_total)}`,
-      order.payment_method === 'pay_upon_pickup'
-        ? `<b>Amount Due at Showroom</b>: ${peso(order.showroom_payable_amount)}`
-        : `<b>Amount Due Now</b>: ${peso(order.upfront_amount)}`,
-      order.payment_method === 'cash_on_delivery' ? `<b>Amount Due to Rider</b>: ${peso(order.rider_collectible_amount)}` : null,
-    ].filter(Boolean).join('\n')
-    const paymentLine = order.payment_method === 'bank_transfer' && order.selected_payment_option_name
-      ? `${readable(order.payment_method)} (${escapeTelegramHtml(order.selected_payment_option_name)})`
-      : readable(order.payment_method)
-    const notificationHeading = getNotificationHeading(order.payment_method)
-    const paymentCaptionLabel = getPaymentCaptionLabel(order.payment_method)
-    const sameDayNote = order.delivery_method === 'same_day_delivery'
-      ? `\n\n🚚 <b>SAME-DAY / ON-DEMAND DELIVERY</b>\nCustomer books and pays rider. Pickup origin: Pasay City.\nDo not book rider until package is marked Ready for Rider.\n${order.same_day_processing === 'next_day_processing' ? '<b>NEXT-DAY PROCESSING</b>' : '<b>SAME-DAY PROCESSING</b>'}`
-      : ''
-    const riderAmountCaption = order.payment_method === 'cash_on_delivery'
-      ? `\n\n💵 <b>Amount Due to Rider</b>\n${peso(order.rider_collectible_amount)}`
-      : ''
-    const promoCaption = Number(order.promo_discount) > 0 ? `\n\n🎉 <b>${escapeTelegramHtml(order.promo_name || 'Launch Promo')}</b>\n−${peso(order.promo_discount)}` : ''
-    const caption = `${notificationHeading}\n\n👤 <b>Customer</b>\n${escapeTelegramHtml(order.customer_name)}\n\n🧾 <b>Order</b>\n${escapeTelegramHtml(order.order_reference)}\n\n${paymentCaptionLabel}\n${paymentLine}${promoCaption}\n\n💰 <b>Amount Due Now</b>\n${peso(order.upfront_amount)}${riderAmountCaption}\n\n📦 <b>Overall Order Value</b>\n${peso(order.overall_total)}\n\n⏳ <b>Status</b>\n${readable(order.payment_status)}${sameDayNote}`
-    const message = `${notificationHeading}\n\n<b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n<b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n<b>Items</b>\n${itemLines}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}${sameDayNote}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\nReview this order in Admin Orders.`
+    const orderItems = items as OrderItem[]
+    const { data: productRows, error: productError } = await admin
+      .from('products')
+      .select('id,brand')
+      .in('id', [...new Set(orderItems.map((item) => item.product_id))])
+    if (productError) throw productError
+    const brandsByProductId = new Map((productRows ?? []).map((product) => [product.id, product.brand as string | null]))
+    const itemLines = formatOrderedItems(orderItems, brandsByProductId)
+    const message = formatOrderSummary(order, itemLines)
 
     let telegram
     let notificationType: 'photo' | 'text-fallback' | 'text' = 'text'
@@ -198,10 +203,20 @@ Deno.serve(async (request) => {
         .createSignedUrl(order.payment_proof_path, 120)
 
       if (!signedProofError && signedProof?.signedUrl) {
-        const photoResult = await sendTelegramPhoto(signedProof.signedUrl, caption)
+        const summaryFitsPhotoCaption = message.length <= 900
+        const photoCaption = summaryFitsPhotoCaption
+          ? message
+          : `${getNotificationHeading(order.payment_method)}\n\n🧾 <b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n\nPayment proof received. The complete order summary follows.`
+        const photoResult = await sendTelegramPhoto(signedProof.signedUrl, photoCaption)
         console.info('Order Telegram photo response.', { orderId: order.id, orderReference: order.order_reference, endpoint: 'sendPhoto', httpStatus: photoResult.status, result: photoResult.code, safeResponse: photoResult.safeResponse })
-        telegram = photoResult.ok ? photoResult : await sendTelegramMessage(message)
-        notificationType = photoResult.ok ? 'photo' : 'text-fallback'
+        if (photoResult.ok && !summaryFitsPhotoCaption) {
+          telegram = await sendTelegramMessage(message)
+          notificationType = 'photo'
+          console.info('Order Telegram full summary response.', { orderId: order.id, orderReference: order.order_reference, endpoint: 'sendMessage', httpStatus: telegram.status, result: telegram.code, safeResponse: telegram.safeResponse })
+        } else {
+          telegram = photoResult.ok ? photoResult : await sendTelegramMessage(message)
+          notificationType = photoResult.ok ? 'photo' : 'text-fallback'
+        }
         if (!photoResult.ok) console.info('Order Telegram photo fallback response.', { orderId: order.id, orderReference: order.order_reference, endpoint: 'sendMessage', httpStatus: telegram.status, result: telegram.code, safeResponse: telegram.safeResponse })
       } else {
         console.error('Order payment proof signed URL could not be created.', { orderId: order.id, orderReference: order.order_reference, message: signedProofError?.message ?? 'No signed URL returned.' })

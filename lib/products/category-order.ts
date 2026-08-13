@@ -2,6 +2,7 @@
 // listed here still appear after these in their existing product order.
 export const productCategoryOptions = [
   'Gel Blaster',
+  'SQB Kits',
   'Magazines',
   'Tracers',
   'Batteries and Chargers',
