@@ -42,7 +42,6 @@ function peso(value: number | string) {
 
 const highlightLabels: Record<HomepageHighlightType, string> = {
   new_arrival: 'New Arrival',
-  featured: 'Featured',
   best_seller: 'Best Seller',
   clearance_sale: 'Clearance Sale',
   limited_stock: 'Limited Stock',
@@ -57,7 +56,7 @@ export function ProductCard({ product, actions }: ProductCardProps) {
         <ProductImageFrame src={imageUrl} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="card" />
       </Link>
       <div className="product-card-body">
-        {product.is_clearance ? <span className="product-highlight-badge product-highlight-clearance_sale">Clearance Sale</span> : product.highlight_type && <span className={`product-highlight-badge product-highlight-${product.highlight_type}`}>{highlightLabels[product.highlight_type]}</span>}
+        {product.is_clearance ? <span className="product-highlight-badge product-highlight-clearance_sale">Clearance Sale</span> : product.highlight_type && product.highlight_type !== 'featured' && <span className={`product-highlight-badge product-highlight-${product.highlight_type}`}>{highlightLabels[product.highlight_type]}</span>}
         <p className="placeholder-label">{product.category}</p>
         <h2><Link className="product-card-title-link" href={productHref}>{product.name}</Link></h2>
           <dl className="product-meta">

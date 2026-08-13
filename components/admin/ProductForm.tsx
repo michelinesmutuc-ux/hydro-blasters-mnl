@@ -12,6 +12,7 @@ import { markCatalogueWriteComplete, markCatalogueWritePending, markWebsiteChang
 import { requireAdminSession } from '../../lib/admin/auth'
 import { GEL_BLASTER_TYPES, isGelBlasterCategory, isGelBlasterType, parseGelBlasterType, type GelBlasterType } from '../../lib/products/product-types'
 import { normalizeProductCategory, productCategoryOptions } from '../../lib/products/category-order'
+import { normalizeHomepageHighlightType, type HomepageHighlightType } from '../../lib/products/highlights'
 import { shippingClassOptions, normalizeShippingClass, type ShippingClass } from '../../lib/shipping/classes'
 import { ProductImageUploader } from './ProductImageUploader'
 import styles from './admin.module.css'
@@ -20,12 +21,11 @@ type ProductFormProps = { mode: 'add' | 'edit' }
 type SpecificationRow = { id: string; label: string; value: string }
 type SupabaseError = { message?: string; code?: string; details?: string | null; hint?: string | null }
 type ProductDraft = ReturnType<typeof initialValues>
-type HighlightType = 'none' | 'new_arrival' | 'featured' | 'best_seller' | 'clearance_sale' | 'limited_stock'
+type HighlightType = HomepageHighlightType
 
 const highlightOptions: { value: HighlightType; label: string }[] = [
   { value: 'none', label: 'None — no badge' },
   { value: 'new_arrival', label: 'New Arrival' },
-  { value: 'featured', label: 'Featured' },
   { value: 'best_seller', label: 'Best Seller' },
   { value: 'clearance_sale', label: 'Clearance Sale' },
   { value: 'limited_stock', label: 'Limited Stock' },
@@ -36,7 +36,7 @@ function slugify(value: string) {
 }
 
 function initialValues() {
-  return { name: '', brand: '', category: '', productType: '' as GelBlasterType | '', price: '0', stock: '0', status: 'draft', shippingClass: 'Bulky' as ShippingClass, shortDescription: '', description: '', featured: false, isActive: false, isClearance: false, isBestSeller: false, hasVariants: false, variantGroupName: '', showOnHomepage: false, highlightType: 'none' as HighlightType, homepageSortOrder: '' }
+  return { name: '', brand: '', category: '', productType: '' as GelBlasterType | '', price: '0', stock: '0', status: 'draft', shippingClass: 'Bulky' as ShippingClass, shortDescription: '', description: '', isActive: false, isClearance: false, isBestSeller: false, hasVariants: false, variantGroupName: '', showOnHomepage: false, highlightType: 'none' as HighlightType, homepageSortOrder: '' }
 }
 
 function newSpecificationRow(): SpecificationRow {
@@ -108,14 +108,13 @@ export function ProductForm({ mode }: ProductFormProps) {
         shippingClass: normalizeShippingClass(data.shipping_class),
         shortDescription: data.short_description ?? '',
         description: data.description ?? '',
-        featured: data.featured,
         isActive: mode === 'add' ? false : data.is_active,
         isClearance: mode === 'add' ? false : data.is_clearance ?? false,
         isBestSeller: mode === 'add' ? false : data.is_best_seller ?? false,
         hasVariants: data.has_variants ?? false,
         variantGroupName: data.variant_group_name ?? '',
         showOnHomepage: mode === 'add' ? false : data.show_on_homepage ?? false,
-        highlightType: (data.highlight_type ?? 'none') as HighlightType,
+        highlightType: normalizeHomepageHighlightType(data.highlight_type),
         homepageSortOrder: data.homepage_sort_order === null || data.homepage_sort_order === undefined ? '' : String(data.homepage_sort_order),
       }
       if (mode === 'edit') {
@@ -371,7 +370,6 @@ export function ProductForm({ mode }: ProductFormProps) {
         description: draft.description.trim() || null,
         specifications: {},
         image_urls: [],
-        featured: draft.featured,
         is_clearance: draft.isClearance,
         is_best_seller: draft.isBestSeller,
         is_active: draft.isActive,
@@ -387,7 +385,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         const { data, error: insertError } = await supabase
           .from('products')
           .insert({ ...productPayload, slug: createdSlug })
-          .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,is_clearance,is_best_seller,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+          .select('id,name,slug,brand,category,product_type,price,stock,status,is_active,is_clearance,is_best_seller,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
           .single()
         if (insertError || !data) {
           console.error('[Hydro Blasters MNL] products insert failed:', insertError)
@@ -409,7 +407,7 @@ export function ProductForm({ mode }: ProductFormProps) {
             .from('products')
             .update({ image_urls: uploadedImageUrls, updated_at: new Date().toISOString() })
             .eq('id', data.id)
-            .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,is_clearance,is_best_seller,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+            .select('id,name,slug,brand,category,product_type,price,stock,status,is_active,is_clearance,is_best_seller,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
             .single()
           if (imageUpdateError || !imageUpdatedProduct) throw imageUpdateError ?? new Error('Product saved, but its image URLs could not be saved.')
           savedProduct = imageUpdatedProduct
@@ -458,7 +456,6 @@ export function ProductForm({ mode }: ProductFormProps) {
         description: draft.description.trim() || null,
         specifications: {},
         image_urls: finalImageUrls,
-        featured: draft.featured,
         is_clearance: draft.isClearance,
         is_best_seller: draft.isBestSeller,
         is_active: draft.isActive,
@@ -475,7 +472,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         .from('products')
         .update(updatePayload)
         .eq('id', productId as string)
-        .select('id,name,slug,brand,category,product_type,price,stock,status,featured,is_active,is_clearance,is_best_seller,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
+        .select('id,name,slug,brand,category,product_type,price,stock,status,is_active,is_clearance,is_best_seller,has_variants,variant_group_name,show_on_homepage,highlight_type,homepage_sort_order,image_urls')
         .single()
       if (updateError) throw updateError
       console.log('Returned Supabase row:', data)
@@ -562,7 +559,7 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={`${styles.highlightToggleSection} ${styles.fieldFull}`}>
             <span className={styles.fieldLegend}>Product Highlights</span>
             <div className={styles.toggleRow}>
-              <label className={styles.toggle}><span><strong>Featured</strong><span>Include in the Featured highlight filter.</span></span><input className={styles.switch} type="checkbox" checked={draft.featured} onChange={(event) => update('featured', event.target.checked)} /></label>
+              <label className={styles.toggle}><span><strong>New Arrivals</strong><span>Show this product in the homepage New Arrivals selection and Shop filter.</span></span><input className={styles.switch} type="checkbox" checked={draft.showOnHomepage && draft.highlightType === 'new_arrival'} onChange={(event) => setDraft((current) => ({ ...current, showOnHomepage: event.target.checked ? true : current.showOnHomepage, highlightType: event.target.checked ? 'new_arrival' : (current.highlightType === 'new_arrival' ? 'none' : current.highlightType) }))} /></label>
               <label className={styles.toggle}><span><strong>Clearance Sale</strong><span>Automatically excludes this product from Launch Promo.</span></span><input className={styles.switch} type="checkbox" checked={draft.isClearance} onChange={(event) => update('isClearance', event.target.checked)} /></label>
               <label className={styles.toggle}><span><strong>Best Seller</strong><span>Include in the Best Seller highlight filter.</span></span><input className={styles.switch} type="checkbox" checked={draft.isBestSeller} onChange={(event) => update('isBestSeller', event.target.checked)} /></label>
             </div>

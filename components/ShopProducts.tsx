@@ -9,11 +9,11 @@ import { ShopFloatingCheckout } from './ShopFloatingCheckout'
 import { GEL_BLASTER_TYPES, gelBlasterTypeFilterLabels, isGelBlasterCategory, parseGelBlasterType, type GelBlasterType } from '../lib/products/product-types'
 import { normalizeProductCategory, sortShopCategories } from '../lib/products/category-order'
 import { ShopCategoryShelf } from './ShopCategoryShelf'
+import { isNewArrival } from '../lib/products/highlights'
 
-type SortOption = 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'name-asc'
-type HighlightFilter = '' | 'clearance_sale' | 'best_seller' | 'featured'
+type SortOption = 'newest' | 'price-asc' | 'price-desc' | 'name-asc'
+type HighlightFilter = '' | 'new_arrival' | 'clearance_sale' | 'best_seller'
 type ShopProduct = PublicProduct & {
-  featured: boolean
   created_at: string
   short_description: string | null
 }
@@ -27,12 +27,12 @@ type ShopFilters = {
   sort: SortOption
 }
 
-const defaultShopFilters: ShopFilters = { search: '', category: '', productType: '', brand: '', highlight: '', sort: 'featured' }
+const defaultShopFilters: ShopFilters = { search: '', category: '', productType: '', brand: '', highlight: '', sort: 'newest' }
 
 function filtersFromUrl(params: Pick<URLSearchParams, 'get'>): ShopFilters {
   const sort = params.get('sort')
-  const validSort: SortOption[] = ['featured', 'newest', 'price-asc', 'price-desc', 'name-asc']
-  const validHighlights: HighlightFilter[] = ['', 'clearance_sale', 'best_seller', 'featured']
+  const validSort: SortOption[] = ['newest', 'price-asc', 'price-desc', 'name-asc']
+  const validHighlights: HighlightFilter[] = ['', 'new_arrival', 'clearance_sale', 'best_seller']
   const category = normalizeProductCategory(params.get('category') ?? '')
   const productType = params.get('type') ?? ''
   return {
@@ -41,7 +41,7 @@ function filtersFromUrl(params: Pick<URLSearchParams, 'get'>): ShopFilters {
     productType: isGelBlasterCategory(category) ? parseGelBlasterType(productType) : '',
     brand: params.get('brand') ?? '',
     highlight: validHighlights.includes(params.get('highlight') as HighlightFilter) ? params.get('highlight') as HighlightFilter : '',
-    sort: validSort.includes(sort as SortOption) ? sort as SortOption : 'featured',
+    sort: validSort.includes(sort as SortOption) ? sort as SortOption : 'newest',
   }
 }
 
@@ -52,7 +52,7 @@ function updateShopUrl(filters: ShopFilters) {
   if (filters.category && isGelBlasterCategory(filters.category) && filters.productType) params.set('type', filters.productType.toLocaleLowerCase())
   if (filters.brand) params.set('brand', filters.brand)
   if (filters.highlight) params.set('highlight', filters.highlight)
-  if (filters.sort !== 'featured') params.set('sort', filters.sort)
+  if (filters.sort !== 'newest') params.set('sort', filters.sort)
   const query = params.toString()
   window.history.replaceState({}, '', query ? `/shop?${query}` : '/shop')
 }
@@ -122,9 +122,9 @@ export function ShopProducts() {
     const filtered = products.filter((product) => {
       const matchesSearch = !query || [product.name, product.brand ?? '', product.category, product.product_type ?? '', product.short_description ?? ''].some((value) => value.toLocaleLowerCase().includes(query))
       const matchesHighlight = !filters.highlight
+        || (filters.highlight === 'new_arrival' && isNewArrival(product))
         || (filters.highlight === 'clearance_sale' && Boolean(product.is_clearance))
         || (filters.highlight === 'best_seller' && Boolean(product.is_best_seller))
-        || (filters.highlight === 'featured' && Boolean(product.featured))
       return matchesSearch && matchesHighlight && (!filters.category || product.category === filters.category) && (!filters.productType || product.product_type === filters.productType) && (!filters.brand || product.brand === filters.brand)
     })
 
@@ -133,11 +133,11 @@ export function ShopProducts() {
       if (filters.sort === 'price-desc') return Number(second.price) - Number(first.price)
       if (filters.sort === 'name-asc') return first.name.localeCompare(second.name)
       if (filters.sort === 'newest') return new Date(second.created_at).getTime() - new Date(first.created_at).getTime()
-      return Number(second.featured) - Number(first.featured) || new Date(second.created_at).getTime() - new Date(first.created_at).getTime()
+      return new Date(second.created_at).getTime() - new Date(first.created_at).getTime()
     })
   }, [products, filters])
 
-  const isDefaultShelfMode = !filters.search.trim() && !filters.category && !filters.productType && !filters.brand && !filters.highlight && filters.sort === 'featured'
+  const isDefaultShelfMode = !filters.search.trim() && !filters.category && !filters.productType && !filters.brand && !filters.highlight && filters.sort === 'newest'
   const activeFilterChips = useMemo(() => {
     const chips: { key: 'search' | 'category' | 'productType' | 'brand' | 'highlight' | 'sort'; label: string }[] = []
     if (filters.search.trim()) chips.push({ key: 'search', label: `Search: ${filters.search.trim()}` })
@@ -145,7 +145,7 @@ export function ShopProducts() {
     if (filters.productType) chips.push({ key: 'productType', label: filters.productType })
     if (filters.brand) chips.push({ key: 'brand', label: filters.brand })
     if (filters.highlight) chips.push({ key: 'highlight', label: filters.highlight.replaceAll('_', ' ') })
-    if (filters.sort !== 'featured') chips.push({ key: 'sort', label: `Sort: ${filters.sort.replaceAll('-', ' ')}` })
+    if (filters.sort !== 'newest') chips.push({ key: 'sort', label: `Sort: ${filters.sort.replaceAll('-', ' ')}` })
     return chips
   }, [filters])
   const filteredResultsTitle = filters.category || (filters.search.trim() ? 'Search results' : 'Filtered products')
@@ -179,7 +179,7 @@ export function ShopProducts() {
     setFilters((current) => {
       if (field === 'category') return { ...current, category: '', productType: '' }
       if (field === 'productType') return { ...current, productType: '' }
-      if (field === 'sort') return { ...current, sort: 'featured' }
+      if (field === 'sort') return { ...current, sort: 'newest' }
       return { ...current, [field]: '' }
     })
   }
@@ -195,8 +195,8 @@ export function ShopProducts() {
         <label className={filters.category ? 'shop-filter-field-active' : undefined}>Category<select value={filters.category} onChange={(event) => updateCategory(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
         {isGelBlasterCategory(filters.category) && <label className={filters.productType ? 'shop-filter-field-active' : undefined}>Type<select value={filters.productType} onChange={(event) => updateFilter('productType', event.target.value as GelBlasterType | '')}><option value="">All</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select></label>}
         <label className={filters.brand ? 'shop-filter-field-active' : undefined}>Brand<select value={filters.brand} onChange={(event) => updateFilter('brand', event.target.value)}><option value="">All brands</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select></label>
-        <label className={filters.highlight ? 'shop-filter-field-active' : undefined}>Highlights<select value={filters.highlight} onChange={(event) => updateFilter('highlight', event.target.value as HighlightFilter)}><option value="">All highlights</option><option value="clearance_sale">Clearance Sale</option><option value="best_seller">Best Seller</option><option value="featured">Featured</option></select></label>
-        <label className={filters.sort !== 'featured' ? 'shop-filter-field-active' : undefined}>Sort<select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as SortOption)}><option value="featured">Featured first</option><option value="newest">Newest</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="name-asc">Name: A to Z</option></select></label>
+        <label className={filters.highlight ? 'shop-filter-field-active' : undefined}>Highlights<select value={filters.highlight} onChange={(event) => updateFilter('highlight', event.target.value as HighlightFilter)}><option value="">All highlights</option><option value="new_arrival">New Arrivals</option><option value="best_seller">Best Seller</option><option value="clearance_sale">Clearance Sale</option></select></label>
+        <label className={filters.sort !== 'newest' ? 'shop-filter-field-active' : undefined}>Sort<select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as SortOption)}><option value="newest">Newest</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="name-asc">Name: A to Z</option></select></label>
       </div>
       <button className="clear-filters" type="button" onClick={clearAllFilters}>Clear all filters</button>
     </div>

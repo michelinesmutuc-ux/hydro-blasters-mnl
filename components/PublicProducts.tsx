@@ -5,15 +5,15 @@ import { fetchActiveProducts } from '../lib/supabase/products'
 import { ProductCard, type PublicProduct } from './ProductCard'
 import { ShopFloatingCheckout } from './ShopFloatingCheckout'
 
-type PublicProductsProps = { featuredOnly?: boolean; homepageHighlights?: boolean }
+type PublicProductsProps = { homepageHighlights?: boolean }
 
-export function PublicProducts({ featuredOnly = false, homepageHighlights = false }: PublicProductsProps) {
+export function PublicProducts({ homepageHighlights = false }: PublicProductsProps) {
   const [products, setProducts] = useState<PublicProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const loadProducts = useCallback(async () => {
-    const { data, error: queryError } = await fetchActiveProducts({ featuredOnly, homepageOnly: homepageHighlights })
+    const { data, error: queryError } = await fetchActiveProducts({ homepageOnly: homepageHighlights })
 
     if (queryError) setError(queryError.message)
     else {
@@ -21,7 +21,7 @@ export function PublicProducts({ featuredOnly = false, homepageHighlights = fals
       setError(null)
     }
     setLoading(false)
-  }, [featuredOnly, homepageHighlights])
+  }, [homepageHighlights])
 
   useEffect(() => {
     loadProducts()
