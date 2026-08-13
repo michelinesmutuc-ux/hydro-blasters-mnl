@@ -2,7 +2,7 @@
 // listed here still appear after these in their existing product order.
 export const productCategoryOptions = [
   'Gel Blaster',
-  'SQB Kits',
+  'SQB Build Parts',
   'Magazines',
   'Tracers',
   'Batteries and Chargers',
@@ -12,6 +12,16 @@ export const productCategoryOptions = [
   'Tactical Gear',
   'Other',
 ] as const
+
+const legacyCategoryNames: Record<string, string> = {
+  'SQB Kits': 'SQB Build Parts',
+}
+
+// Keeps cached catalogue data and old Shop links working while the database
+// migration changes persisted product rows to the final category label.
+export function normalizeProductCategory(category: string) {
+  return legacyCategoryNames[category] ?? category
+}
 
 export const shopCategoryDisplayOrder = productCategoryOptions
 

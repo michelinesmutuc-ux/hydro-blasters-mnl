@@ -11,7 +11,7 @@ import { fetchAdminAddonCandidates, fetchProductAddons, replaceProductAddons, ty
 import { markCatalogueWriteComplete, markCatalogueWritePending, markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
 import { GEL_BLASTER_TYPES, isGelBlasterCategory, isGelBlasterType, parseGelBlasterType, type GelBlasterType } from '../../lib/products/product-types'
-import { productCategoryOptions } from '../../lib/products/category-order'
+import { normalizeProductCategory, productCategoryOptions } from '../../lib/products/category-order'
 import { shippingClassOptions, normalizeShippingClass, type ShippingClass } from '../../lib/shipping/classes'
 import { ProductImageUploader } from './ProductImageUploader'
 import styles from './admin.module.css'
@@ -100,7 +100,7 @@ export function ProductForm({ mode }: ProductFormProps) {
       const savedDraft = {
         name: duplicateName,
         brand: data.brand ?? '',
-        category: data.category,
+        category: normalizeProductCategory(data.category),
         productType: parseGelBlasterType(data.product_type),
         price: String(data.price),
         stock: mode === 'add' ? '0' : String(data.stock),

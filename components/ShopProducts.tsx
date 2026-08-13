@@ -7,7 +7,7 @@ import { ProductCard, type PublicProduct } from './ProductCard'
 import { getProductUrl } from '../lib/products/get-product-url'
 import { ShopFloatingCheckout } from './ShopFloatingCheckout'
 import { GEL_BLASTER_TYPES, gelBlasterTypeFilterLabels, isGelBlasterCategory, parseGelBlasterType, type GelBlasterType } from '../lib/products/product-types'
-import { sortShopCategories } from '../lib/products/category-order'
+import { normalizeProductCategory, sortShopCategories } from '../lib/products/category-order'
 import { ShopCategoryShelf } from './ShopCategoryShelf'
 
 type SortOption = 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'name-asc'
@@ -33,7 +33,7 @@ function filtersFromUrl(params: Pick<URLSearchParams, 'get'>): ShopFilters {
   const sort = params.get('sort')
   const validSort: SortOption[] = ['featured', 'newest', 'price-asc', 'price-desc', 'name-asc']
   const validHighlights: HighlightFilter[] = ['', 'clearance_sale', 'best_seller', 'featured']
-  const category = params.get('category') ?? ''
+  const category = normalizeProductCategory(params.get('category') ?? '')
   const productType = params.get('type') ?? ''
   return {
     search: params.get('search') ?? '',
@@ -82,7 +82,7 @@ export function ShopProducts() {
 
     if (queryError) setError(queryError.message)
     else {
-      const currentProducts = (data ?? []) as ShopProduct[]
+      const currentProducts = ((data ?? []) as ShopProduct[]).map((product) => ({ ...product, category: normalizeProductCategory(product.category) }))
       setProducts(currentProducts)
       setError(null)
       const product = currentProducts[0]

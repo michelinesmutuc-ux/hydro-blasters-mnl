@@ -8,7 +8,7 @@ import { fetchAdminProducts } from '../../lib/supabase/products'
 import { markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
 import { GEL_BLASTER_TYPES, gelBlasterTypeFilterLabels, isGelBlasterCategory, isGelBlasterType, type GelBlasterType } from '../../lib/products/product-types'
-import { productCategoryOptions } from '../../lib/products/category-order'
+import { normalizeProductCategory, productCategoryOptions } from '../../lib/products/category-order'
 import { normalizeShippingClass, shippingClassOptions, type ShippingClass } from '../../lib/shipping/classes'
 import styles from './admin.module.css'
 
@@ -96,7 +96,7 @@ export function ProductsTable() {
     const { data, error: queryError } = await fetchAdminProducts()
     if (queryError) setError(queryError.message)
     else {
-      setProducts((data ?? []) as Product[])
+      setProducts(((data ?? []) as Product[]).map((product) => ({ ...product, category: normalizeProductCategory(product.category) })))
       const productIds = (data ?? []).map((product) => product.id)
       let variantLoadError: string | null = null
       if (productIds.length > 0) {
@@ -133,7 +133,7 @@ export function ProductsTable() {
       try {
         const stored = window.localStorage.getItem('hydro-products-updated')
         const updatedProduct = stored ? JSON.parse(stored).product as Product | undefined : undefined
-        if (updatedProduct) setProducts((current) => current.map((product) => product.id === updatedProduct.id ? updatedProduct : product))
+        if (updatedProduct) setProducts((current) => current.map((product) => product.id === updatedProduct.id ? { ...updatedProduct, category: normalizeProductCategory(updatedProduct.category) } : product))
       } catch {
         // A fresh query below remains the source of truth if the signal cannot be read.
       }
