@@ -17,6 +17,7 @@ export function AdminShell({ active, children }: AdminShellProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [isAuthorized, setIsAuthorized] = useState(false)
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
 
   useEffect(() => {
     let isMounted = true
@@ -48,25 +49,35 @@ export function AdminShell({ active, children }: AdminShellProps) {
     router.replace('/admin/login')
   }
 
+  useEffect(() => {
+    if (!isMobileNavOpen) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMobileNavOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [isMobileNavOpen])
+
   if (!isAuthorized) return <main className={styles.authChecking} role="status">Checking administrator access…</main>
 
   return (
     <div className={styles.shell}>
-      <aside className={styles.sidebar}>
+      {isMobileNavOpen && <button type="button" className={styles.mobileNavBackdrop} aria-label="Close admin navigation" onClick={() => setIsMobileNavOpen(false)} />}
+      <aside className={`${styles.sidebar} ${isMobileNavOpen ? styles.sidebarOpen : ''}`} aria-hidden={!isMobileNavOpen && undefined}>
         <Link href="/admin" className={styles.brand}>
           <img src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" />
           <span className={styles.brandCopy}><strong>Admin</strong><span>Management area</span></span>
         </Link>
-        <nav className={styles.nav} aria-label="Admin navigation">
-          <Link href="/admin" data-active={active === 'dashboard'}>Dashboard</Link>
-          <Link href="/admin/products" data-active={active === 'products'}>Products</Link>
-          <Link href="/admin/orders" data-active={active === 'orders'}>Orders</Link>
-          <Link href="/admin/appointments" data-active={active === 'appointments'}>Appointments</Link>
+        <nav id="admin-navigation" className={styles.nav} aria-label="Admin navigation">
+          <Link href="/admin" data-active={active === 'dashboard'} onClick={() => setIsMobileNavOpen(false)}>Dashboard</Link>
+          <Link href="/admin/products" data-active={active === 'products'} onClick={() => setIsMobileNavOpen(false)}>Products</Link>
+          <Link href="/admin/orders" data-active={active === 'orders'} onClick={() => setIsMobileNavOpen(false)}>Orders</Link>
+          <Link href="/admin/appointments" data-active={active === 'appointments'} onClick={() => setIsMobileNavOpen(false)}>Appointments</Link>
         </nav>
         <div className={styles.sidebarFooter}>Signed in as an authorized administrator.</div>
       </aside>
       <main className={styles.main}>
-        <div className={styles.topbar}><div><p>Hydro Blasters MNL</p><strong>Admin dashboard</strong></div><div className={styles.topbarActions}><button type="button" className={styles.signOutButton} onClick={signOut}>Sign out</button><button type="button" className={styles.menuButton} aria-label="Admin navigation">☰</button></div></div>
+        <div className={styles.topbar}><div><p>Hydro Blasters MNL</p><strong>Admin dashboard</strong></div><div className={styles.topbarActions}><button type="button" className={styles.signOutButton} onClick={signOut}>Sign out</button><button type="button" className={styles.menuButton} aria-label={isMobileNavOpen ? 'Close admin navigation' : 'Open admin navigation'} aria-expanded={isMobileNavOpen} aria-controls="admin-navigation" onClick={() => setIsMobileNavOpen((current) => !current)}>☰</button></div></div>
         <AdminDebugPanel />
         {children}
       </main>

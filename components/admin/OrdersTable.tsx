@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase/client'
 import { requireAdminSession } from '../../lib/admin/auth'
+import { formatCourierAddress, formatFulfillmentAddressLines } from '../../lib/orders/format-fulfillment-address'
 import styles from './admin.module.css'
 
 type Order = {
@@ -10,6 +11,12 @@ type Order = {
   order_reference: string
   customer_name: string
   mobile_number: string
+  house_unit: string | null
+  street: string | null
+  barangay: string | null
+  city_municipality: string | null
+  region: string | null
+  postal_code: string | null
   delivery_method: string
   payment_method: string
   selected_payment_option_name: string | null
@@ -106,7 +113,7 @@ export function OrdersTable() {
   async function load() {
     let query = supabase
       .from('orders')
-      .select('id,order_reference,customer_name,mobile_number,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,shipping_fee,shipping_tier,promo_name,promo_discount,payment_status,order_status,same_day_processing,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,is_test_order,archived_at,created_at,order_notes')
+      .select('id,order_reference,customer_name,mobile_number,house_unit,street,barangay,city_municipality,region,postal_code,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,shipping_fee,shipping_tier,promo_name,promo_discount,payment_status,order_status,same_day_processing,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,is_test_order,archived_at,created_at,order_notes')
       .order('created_at', { ascending: false })
     if (orderFilter === 'active') query = query.is('archived_at', null)
     if (orderFilter === 'archived') query = query.not('archived_at', 'is', null)
@@ -313,6 +320,21 @@ export function OrdersTable() {
     try { await navigator.clipboard.writeText(message); setTelegramFeedback('Ready-for-rider message copied.') } catch { setError('Ready message could not be copied.') }
   }
 
+  async function copyFullAddress(order: Order) {
+    try {
+      await navigator.clipboard.writeText(formatCourierAddress(order))
+      setTelegramFeedback('Full address copied.')
+    } catch {
+      setError('Full address could not be copied.')
+    }
+  }
+
+  function deliveryLabel(deliveryMethod: string) {
+    if (deliveryMethod === 'showroom_pickup') return 'SHOWROOM PICKUP'
+    if (deliveryMethod === 'same_day_delivery') return 'SAME-DAY / ON-DEMAND DELIVERY'
+    return 'STANDARD SHIPPING'
+  }
+
   async function setOrderFlag(order: Order, changes: Partial<Pick<Order, 'is_test_order' | 'archived_at'>>) {
     setError(null)
     try {
@@ -376,9 +398,9 @@ export function OrdersTable() {
 
         return <tr key={order.id}>
         <td>{order.order_reference}</td>
-        <td>{order.customer_name}<br />{order.mobile_number}</td>
+        <td><div className={styles.orderCustomer}><strong>Customer</strong><span>{order.customer_name}</span><span>{order.mobile_number}</span></div></td>
         <td>{(orderItemsByOrder[order.id] ?? []).map((item, index) => <div key={`${item.product_name}-${index}`}>{item.product_name}{item.variant_name && <><br /><span className={styles.placeholderText}>{item.variant_group_name || 'Option'}: {item.variant_name}</span></>}<br /><span className={styles.placeholderText}>Qty {item.quantity}</span></div>)}</td>
-        <td>{order.delivery_method === 'same_day_delivery' ? <><strong className={styles.status}>SAME-DAY / ON-DEMAND RIDER</strong><br />Pasay City pickup<br />{order.same_day_processing === 'next_day_processing' ? 'Next-day processing' : 'Same-day processing'}</> : order.delivery_method.replaceAll('_', ' ')}</td>
+        <td><section className={styles.fulfillmentBlock}><strong>Fulfillment</strong><b>{deliveryLabel(order.delivery_method)}</b>{order.delivery_method === 'showroom_pickup' ? <p>Showroom pickup — no delivery address was requested for this order.</p> : <><span className={styles.fulfillmentAddressLabel}>Full shipping address</span><address>{formatFulfillmentAddressLines(order).map((line) => <span key={line}>{line}</span>)}{formatFulfillmentAddressLines(order).length === 0 && <span>No address details were saved for this older order.</span>}</address>{order.order_notes && <p><strong>Delivery notes:</strong> {order.order_notes}</p>}<button className={`${styles.tableAction} ${styles.copyAddressAction}`} type="button" onClick={() => void copyFullAddress(order)}>Copy Full Address</button>{order.delivery_method === 'same_day_delivery' && <p>Pasay City pickup<br />{order.same_day_processing === 'next_day_processing' ? 'Next-day processing' : 'Same-day processing'}</p>}</>}</section></td>
         <td>{order.payment_method.replaceAll('_', ' ')}{order.selected_payment_option_name && <><br />Bank selected: {order.selected_payment_option_name}</>}</td>
         <td>{Number(order.promo_discount) > 0 && <><strong>{order.promo_name || 'Launch Promo'}</strong><br />10% OFF · −₱{order.promo_discount}<br /></>}Shipping{order.shipping_tier ? ` — ${order.shipping_tier}` : ''} ₱{order.shipping_fee}<br />Amount due now ₱{order.upfront_amount}<br />Rider/showroom ₱{Number(order.rider_collectible_amount) || Number(order.showroom_payable_amount)}</td>
         <td>
