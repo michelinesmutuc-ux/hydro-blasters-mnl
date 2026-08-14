@@ -21,7 +21,5 @@ export function formatFulfillmentAddressLines(order: FulfillmentAddress) {
 
 export function formatCourierAddress(order: FulfillmentAddress) {
   const lines = [clean(order.customer_name), clean(order.mobile_number), ...formatFulfillmentAddressLines(order)]
-  const notes = clean(order.order_notes)
-  if (notes) lines.push(`Delivery notes: ${notes}`)
   return lines.filter(Boolean).join('\n')
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { supabase } from '../../lib/supabase/client'
 import { requireAdminSession } from '../../lib/admin/auth'
 import { formatCourierAddress, formatFulfillmentAddressLines } from '../../lib/orders/format-fulfillment-address'
@@ -323,7 +324,7 @@ export function OrdersTable() {
   async function copyFullAddress(order: Order) {
     try {
       await navigator.clipboard.writeText(formatCourierAddress(order))
-      setTelegramFeedback('Full address copied.')
+      setTelegramFeedback('Shipping details copied')
     } catch {
       setError('Full address could not be copied.')
     }
@@ -397,10 +398,10 @@ export function OrdersTable() {
         const proofDiagnostic = proofDiagnostics[order.id]
 
         return <tr key={order.id}>
-        <td>{order.order_reference}</td>
+        <td><Link className={styles.tableAction} href={`/admin/order?orderId=${encodeURIComponent(order.id)}`}>{order.order_reference}</Link><br /><Link className={styles.orderViewLink} href={`/admin/order?orderId=${encodeURIComponent(order.id)}`}>View Order</Link></td>
         <td><div className={styles.orderCustomer}><strong>Customer</strong><span>{order.customer_name}</span><span>{order.mobile_number}</span></div></td>
         <td>{(orderItemsByOrder[order.id] ?? []).map((item, index) => <div key={`${item.product_name}-${index}`}>{item.product_name}{item.variant_name && <><br /><span className={styles.placeholderText}>{item.variant_group_name || 'Option'}: {item.variant_name}</span></>}<br /><span className={styles.placeholderText}>Qty {item.quantity}</span></div>)}</td>
-        <td><section className={styles.fulfillmentBlock}><strong>Fulfillment</strong><b>{deliveryLabel(order.delivery_method)}</b>{order.delivery_method === 'showroom_pickup' ? <p>Showroom pickup — no delivery address was requested for this order.</p> : <><span className={styles.fulfillmentAddressLabel}>Full shipping address</span><address>{formatFulfillmentAddressLines(order).map((line) => <span key={line}>{line}</span>)}{formatFulfillmentAddressLines(order).length === 0 && <span>No address details were saved for this older order.</span>}</address>{order.order_notes && <p><strong>Delivery notes:</strong> {order.order_notes}</p>}<button className={`${styles.tableAction} ${styles.copyAddressAction}`} type="button" onClick={() => void copyFullAddress(order)}>Copy Full Address</button>{order.delivery_method === 'same_day_delivery' && <p>Pasay City pickup<br />{order.same_day_processing === 'next_day_processing' ? 'Next-day processing' : 'Same-day processing'}</p>}</>}</section></td>
+        <td><section className={styles.fulfillmentBlock}><strong>Fulfillment</strong><b>{deliveryLabel(order.delivery_method)}</b>{order.delivery_method === 'showroom_pickup' ? <p>Showroom pickup — no delivery address was requested for this order.</p> : <><span className={styles.fulfillmentAddressLabel}>Full shipping address</span><address>{formatFulfillmentAddressLines(order).map((line) => <span key={line}>{line}</span>)}{formatFulfillmentAddressLines(order).length === 0 && <span>No address details were saved for this older order.</span>}</address>{order.order_notes && <p><strong>Delivery notes:</strong> {order.order_notes}</p>}<button className={`${styles.tableAction} ${styles.copyAddressAction}`} type="button" onClick={() => void copyFullAddress(order)}>Copy Shipping Details</button>{order.delivery_method === 'same_day_delivery' && <p>Pasay City pickup<br />{order.same_day_processing === 'next_day_processing' ? 'Next-day processing' : 'Same-day processing'}</p>}</>}</section></td>
         <td>{order.payment_method.replaceAll('_', ' ')}{order.selected_payment_option_name && <><br />Bank selected: {order.selected_payment_option_name}</>}</td>
         <td>{Number(order.promo_discount) > 0 && <><strong>{order.promo_name || 'Launch Promo'}</strong><br />10% OFF · −₱{order.promo_discount}<br /></>}Shipping{order.shipping_tier ? ` — ${order.shipping_tier}` : ''} ₱{order.shipping_fee}<br />Amount due now ₱{order.upfront_amount}<br />Rider/showroom ₱{Number(order.rider_collectible_amount) || Number(order.showroom_payable_amount)}</td>
         <td>

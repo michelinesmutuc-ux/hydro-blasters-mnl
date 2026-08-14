@@ -43,6 +43,10 @@ const json = (body: Record<string, string>, status = 200) => new Response(JSON.s
 const peso = (value: number | string) => `₱${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const readable = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const escapeTelegramHtml = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+const adminOrderUrl = (orderId: string) => {
+  const siteUrl = (Deno.env.get('PUBLIC_SITE_URL') ?? Deno.env.get('NEXT_PUBLIC_SITE_URL') ?? 'https://hydro-blasters-mnl.pages.dev').replace(/\/$/, '')
+  return `${siteUrl}/admin/order?orderId=${encodeURIComponent(orderId)}`
+}
 
 async function sendTelegramRequest(endpoint: 'sendMessage' | 'sendPhoto', payload: Record<string, unknown>) {
   const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN')
@@ -118,7 +122,7 @@ function formatOrderSummary(order: Order, itemLines: string) {
     ? `\n\n🚚 <b>SAME-DAY / ON-DEMAND DELIVERY</b>\nCustomer books and pays rider. Pickup origin: Pasay City.\nDo not book rider until package is marked Ready for Rider.\n${order.same_day_processing === 'next_day_processing' ? '<b>NEXT-DAY PROCESSING</b>' : '<b>SAME-DAY PROCESSING</b>'}`
     : ''
 
-  return `${getNotificationHeading(order.payment_method)}\n\n🧾 <b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n\n<b>ITEMS ORDERED</b>\n${itemLines}\n\n👤 <b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}${sameDayNote}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\nReview this order in Admin Orders.`
+  return `${getNotificationHeading(order.payment_method)}\n\n🧾 <b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n\n<b>ITEMS ORDERED</b>\n${itemLines}\n\n👤 <b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}${sameDayNote}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\n<a href="${adminOrderUrl(order.id)}">OPEN ORDER</a>`
 }
 
 Deno.serve(async (request) => {

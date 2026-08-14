@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
 import { requireAdminSession } from '../../lib/admin/auth'
 import { AdminDebugPanel } from './AdminDebugPanel'
@@ -16,6 +16,7 @@ type AdminShellProps = {
 export function AdminShell({ active, children }: AdminShellProps) {
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const [isAuthorized, setIsAuthorized] = useState(false)
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false)
 
@@ -29,7 +30,8 @@ export function AdminShell({ active, children }: AdminShellProps) {
         const reason = error instanceof Error && error.message.includes('administrator role') ? 'unauthorized' : ''
         if (reason) await supabase.auth.signOut()
         if (!isMounted) return
-        router.replace(reason ? '/admin/login?reason=unauthorized' : `/admin/login?next=${encodeURIComponent(pathname)}`)
+        const requestedPath = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ''}`
+        router.replace(reason ? '/admin/login?reason=unauthorized' : `/admin/login?next=${encodeURIComponent(requestedPath)}`)
         return
       }
       setIsAuthorized(true)
@@ -42,7 +44,7 @@ export function AdminShell({ active, children }: AdminShellProps) {
       isMounted = false
       listener.subscription.unsubscribe()
     }
-  }, [pathname, router])
+  }, [pathname, router, searchParams])
 
   async function signOut() {
     await supabase.auth.signOut()
