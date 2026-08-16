@@ -1,23 +1,11 @@
-import { supabase } from './client'
+import { requireAdminSession } from '../admin/auth'
 
-const PRODUCT_IMAGE_BUCKET = 'products'
 const MAX_IMAGE_DIMENSION = 2048
 const IMAGE_QUALITY = 0.86
+const R2_PUBLIC_BASE_URL = 'https://pub-fbd9108fe1ba4469a1ac5c6bb8204840.r2.dev'
+const PRODUCT_IMAGE_ENDPOINT = '/api/admin/product-images'
 
 export const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp'] as const
-
-function extensionForType(type: string) {
-  if (type === 'image/webp') return 'webp'
-  if (type === 'image/png') return 'png'
-  return 'jpg'
-}
-
-function dateStamp() {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${now.getFullYear()}${month}${day}`
-}
 
 function loadImage(file: File) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -62,51 +50,79 @@ type UploadProductImagesOptions = {
   onProgress: (completed: number, total: number) => void
 }
 
+type ProductImageUploadResponse = {
+  key?: string
+  publicUrl?: string
+  error?: string
+}
+
+async function responseJson(response: Response): Promise<ProductImageUploadResponse> {
+  try {
+    return await response.json() as ProductImageUploadResponse
+  } catch {
+    return {}
+  }
+}
+
 export async function uploadProductImages({ files, productId, onProgress }: UploadProductImagesOptions): Promise<string[]> {
-  const paths: string[] = []
+  if (files.length === 0) return []
+
+  const session = await requireAdminSession()
   const urls: string[] = []
 
   for (let index = 0; index < files.length; index += 1) {
     const sourceFile = files[index]
     const file = await optimizeImage(sourceFile)
-    const randomId = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
-    const path = `products/${productId}/image-${dateStamp()}-${randomId}.${extensionForType(file.type)}`
-    const { data: uploadData, error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).upload(path, file, {
-      cacheControl: '3600',
-      contentType: file.type,
-      upsert: false,
+    const body = new FormData()
+    body.set('productId', productId)
+    body.set('file', file, file.name)
+
+    const response = await fetch(PRODUCT_IMAGE_ENDPOINT, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${session.access_token}` },
+      body,
     })
+    const result = await responseJson(response)
 
-    if (error) throw new Error(`Could not upload ${sourceFile.name}. ${error.message}`)
+    if (!response.ok) throw new Error(`Could not upload ${sourceFile.name}. ${result.error || `Upload service returned ${response.status}.`}`)
+    if (!result.publicUrl) throw new Error(`Could not create a public URL for ${sourceFile.name}.`)
+    if (!result.publicUrl.startsWith(`${R2_PUBLIC_BASE_URL}/products/`)) throw new Error(`Upload service returned an unexpected image URL for ${sourceFile.name}.`)
 
-    const { data } = supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path)
-    if (!data.publicUrl) throw new Error(`Could not create a public URL for ${sourceFile.name}.`)
-    paths.push(uploadData.path)
-    urls.push(data.publicUrl)
+    urls.push(result.publicUrl)
     onProgress(index + 1, files.length)
   }
 
-  console.log('[Hydro Blasters MNL] Uploaded file paths:', paths)
-  console.log('[Hydro Blasters MNL] Generated public URLs:', urls)
+  console.log('[Hydro Blasters MNL] Generated R2 public URLs:', urls)
   return urls
 }
 
-function storagePathFromPublicUrl(url: string) {
+function r2KeyFromPublicUrl(url: string) {
   try {
     const parsed = new URL(url)
-    const marker = `/storage/v1/object/public/${PRODUCT_IMAGE_BUCKET}/`
-    const markerIndex = parsed.pathname.indexOf(marker)
-    if (markerIndex === -1) return null
-    return decodeURIComponent(parsed.pathname.slice(markerIndex + marker.length)) || null
+    const publicBase = new URL(R2_PUBLIC_BASE_URL)
+    if (parsed.origin !== publicBase.origin) return null
+    const key = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''))
+    if (!key.startsWith('products/')) return null
+    return key || null
   } catch {
     return null
   }
 }
 
 export async function deleteProductImages(imageUrls: string[]) {
-  const paths = imageUrls.map(storagePathFromPublicUrl).filter((path): path is string => Boolean(path))
-  if (paths.length === 0) return
+  const keys = imageUrls.map(r2KeyFromPublicUrl).filter((key): key is string => Boolean(key))
+  if (keys.length === 0) return
 
-  const { error } = await supabase.storage.from(PRODUCT_IMAGE_BUCKET).remove(paths)
-  if (error) throw new Error(`The product row was updated, but its stored images could not be removed. ${error.message}`)
+  const session = await requireAdminSession()
+  const response = await fetch(PRODUCT_IMAGE_ENDPOINT, {
+    method: 'DELETE',
+    headers: {
+      authorization: `Bearer ${session.access_token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ keys }),
+  })
+  const result = await responseJson(response)
+
+  if (!response.ok) throw new Error(`The product row was updated, but its R2 images could not be removed. ${result.error || `Cleanup service returned ${response.status}.`}`)
 }
