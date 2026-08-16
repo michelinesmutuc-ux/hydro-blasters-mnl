@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
 import { requireAdminSession } from '../../lib/admin/auth'
@@ -14,6 +14,10 @@ type AdminShellProps = {
 }
 
 export function AdminShell({ active, children }: AdminShellProps) {
+  return <Suspense fallback={<main className={styles.authChecking} role="status">Checking administrator access…</main>}><AdminShellContent active={active}>{children}</AdminShellContent></Suspense>
+}
+
+function AdminShellContent({ active, children }: AdminShellProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
