@@ -55,6 +55,7 @@ export function ProductForm({ mode }: ProductFormProps) {
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>([])
   const [loadedImageUrls, setLoadedImageUrls] = useState<string[]>([])
+  const [pendingPrimarySelected, setPendingPrimarySelected] = useState(false)
   const [uploadProgress, setUploadProgress] = useState<{ completed: number; total: number } | null>(null)
   const [productId, setProductId] = useState<string | null>(null)
   const [isLoadingProduct, setIsLoadingProduct] = useState(mode === 'edit')
@@ -115,6 +116,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         highlightType: normalizeHomepageHighlightType(data.highlight_type),
         homepageSortOrder: data.homepage_sort_order === null || data.homepage_sort_order === undefined ? '' : String(data.homepage_sort_order),
       }
+      setPendingPrimarySelected(false)
       if (mode === 'edit') {
         setProductId(data.id)
         savedDraftRef.current = { ...savedDraft }
@@ -412,6 +414,7 @@ export function ProductForm({ mode }: ProductFormProps) {
         }
         setExistingImageUrls(uploadedImageUrls)
         setLoadedImageUrls(uploadedImageUrls)
+        setPendingPrimarySelected(false)
         setImageFiles([])
         try {
           const savedVariantRows = draft.hasVariants ? await prepareVariantImages(data.id, variantRows) : []
@@ -436,10 +439,9 @@ export function ProductForm({ mode }: ProductFormProps) {
         : []
       if (imageFiles.length > 0 && uploadedImageUrls.length !== imageFiles.length) throw new Error('Not every selected image returned a public URL. The product was not saved.')
       const remainingExistingImageUrls = [...existingImageUrls]
-      const finalImageUrls = [
-        ...remainingExistingImageUrls,
-        ...uploadedImageUrls,
-      ]
+      const finalImageUrls = pendingPrimarySelected && uploadedImageUrls.length > 0
+        ? [uploadedImageUrls[0], ...remainingExistingImageUrls, ...uploadedImageUrls.slice(1)]
+        : [...remainingExistingImageUrls, ...uploadedImageUrls]
       const removedImageUrls = loadedImageUrls.filter((url) => !remainingExistingImageUrls.includes(url))
       const updatePayload = {
         name: draft.name.trim(),
@@ -495,11 +497,13 @@ export function ProductForm({ mode }: ProductFormProps) {
       } catch (specificationError) {
         setExistingImageUrls(finalImageUrls)
         setLoadedImageUrls(finalImageUrls)
+        setPendingPrimarySelected(false)
         setImageFiles([])
         setError(describeSpecificationError(specificationError, true))
         return
       }
       await deleteProductImages(removedImageUrls)
+      setPendingPrimarySelected(false)
       markWebsiteChangesUnpublished()
       window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: data, updatedAt: Date.now() }))
       window.dispatchEvent(new Event('hydro-products-updated'))
@@ -606,7 +610,7 @@ export function ProductForm({ mode }: ProductFormProps) {
           <div className={styles.specificationActions}><button type="button" className={styles.rowAction} onClick={() => moveSpecificationRow(index, -1)} disabled={isSaving || index === 0} aria-label={`Move ${row.label || 'specification'} up`}>↑</button><button type="button" className={styles.rowAction} onClick={() => moveSpecificationRow(index, 1)} disabled={isSaving || index === specificationRows.length - 1} aria-label={`Move ${row.label || 'specification'} down`}>↓</button><button type="button" className={`${styles.rowAction} ${styles.rowDelete}`} onClick={() => { const next = specificationRowsRef.current.filter((currentRow) => currentRow.id !== row.id); specificationRowsRef.current = next; setSpecificationRows(next) }} disabled={isSaving}>Remove</button></div>
         </div>)}</div>}
       </section>
-      <section className={styles.formSection}><h2>Product images</h2><ProductImageUploader files={imageFiles} onFilesChange={setImageFiles} existingImageUrls={existingImageUrls} onExistingImageUrlsChange={setExistingImageUrls} disabled={isSaving} progress={uploadProgress} /></section>
+      <section className={styles.formSection}><h2>Product images</h2><ProductImageUploader files={imageFiles} onFilesChange={setImageFiles} existingImageUrls={existingImageUrls} onExistingImageUrlsChange={setExistingImageUrls} pendingPrimarySelected={pendingPrimarySelected} onPendingPrimarySelectedChange={setPendingPrimarySelected} disabled={isSaving} progress={uploadProgress} /></section>
       <div className={styles.formActions}><button type="button" className={styles.secondaryButton} onClick={discardDraft}>Cancel</button><button type="submit" className={styles.primaryButton} disabled={isSaving}>{isSaving ? 'Saving…' : mode === 'add' ? 'Save product' : 'Save changes'}</button></div>
     </form>
   )
