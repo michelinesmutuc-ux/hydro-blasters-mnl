@@ -9,6 +9,8 @@ type ProductImageUploaderProps = {
   onFilesChange: (files: File[]) => void
   existingImageUrls?: string[]
   onExistingImageUrlsChange?: (urls: string[]) => void
+  pendingPrimarySelected?: boolean
+  onPendingPrimarySelectedChange?: (selected: boolean) => void
   disabled?: boolean
   progress: { completed: number; total: number } | null
   maxFiles?: number
@@ -19,11 +21,12 @@ type ProductImageUploaderProps = {
 
 const acceptedTypes = new Set<string>(acceptedImageTypes)
 
-export function ProductImageUploader({ files, onFilesChange, existingImageUrls = [], onExistingImageUrlsChange, disabled = false, progress, maxFiles, uploadTitle = 'Drop images here or choose files', uploadHint = 'JPG, PNG, or WebP. Select multiple images; the first becomes the primary image.', previewLabel = 'product' }: ProductImageUploaderProps) {
+export function ProductImageUploader({ files, onFilesChange, existingImageUrls = [], onExistingImageUrlsChange, pendingPrimarySelected = false, onPendingPrimarySelectedChange, disabled = false, progress, maxFiles, uploadTitle = 'Drop images here or choose files', uploadHint = 'JPG, PNG, or WebP. Select multiple images; the first becomes the primary image.', previewLabel = 'product' }: ProductImageUploaderProps) {
   const inputId = useId()
   const [isDragging, setIsDragging] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
   const previews = useMemo(() => files.map((file) => ({ file, url: URL.createObjectURL(file) })), [files])
+  const canSelectPrimary = maxFiles !== 1
 
   useEffect(() => () => previews.forEach((preview) => URL.revokeObjectURL(preview.url)), [previews])
 
@@ -39,7 +42,9 @@ export function ProductImageUploader({ files, onFilesChange, existingImageUrls =
   }
 
   function removeFile(index: number) {
-    onFilesChange(files.filter((_, currentIndex) => currentIndex !== index))
+    const next = files.filter((_, currentIndex) => currentIndex !== index)
+    if (pendingPrimarySelected && index === 0) onPendingPrimarySelectedChange?.(false)
+    onFilesChange(next)
   }
 
   function removeExistingImage(index: number) {
@@ -47,19 +52,25 @@ export function ProductImageUploader({ files, onFilesChange, existingImageUrls =
   }
 
   function setExistingPrimary(index: number) {
-    if (index <= 0) return
     const next = [...existingImageUrls]
-    const [selected] = next.splice(index, 1)
-    next.unshift(selected)
+    if (index > 0) {
+      const [selected] = next.splice(index, 1)
+      next.unshift(selected)
+    }
+    onPendingPrimarySelectedChange?.(false)
     onExistingImageUrlsChange?.(next)
   }
 
   function setFilePrimary(index: number) {
-    if (index <= 0) return
+    const selected = files[index]
+    if (!selected) return
     const next = [...files]
-    const [selected] = next.splice(index, 1)
-    next.unshift(selected)
+    if (index > 0) {
+      next.splice(index, 1)
+      next.unshift(selected)
+    }
     onFilesChange(next)
+    onPendingPrimarySelectedChange?.(existingImageUrls.length > 0)
   }
 
   return (
@@ -72,20 +83,26 @@ export function ProductImageUploader({ files, onFilesChange, existingImageUrls =
       {validationError && <p className={styles.imageError} role="alert">{validationError}</p>}
       {progress && <p className={styles.uploadProgress} role="status">Uploading image {progress.completed} of {progress.total}…</p>}
       {(existingImageUrls.length > 0 || previews.length > 0) && <div className={styles.previewGrid} aria-label={`Selected ${previewLabel} images`}>
-        {existingImageUrls.map((url, index) => <article className={styles.previewCard} key={url}>
-          <img src={url} alt={`Saved ${previewLabel} image ${index + 1}`} />
-          {index === 0
-            ? <span className={styles.primaryImageLabel}>Primary</span>
-            : <button type="button" className={styles.removeImageButton} style={{ left: 8, right: 'auto', borderColor: '#72eaff', color: '#72eaff' }} disabled={disabled} onClick={() => setExistingPrimary(index)} aria-label={`Set saved ${previewLabel} image ${index + 1} as primary`}>Set as Primary</button>}
-          <button type="button" className={styles.removeImageButton} disabled={disabled} onClick={() => removeExistingImage(index)} aria-label={`Remove saved ${previewLabel} image ${index + 1}`}>Remove</button>
-        </article>)}
-        {previews.map((preview, index) => <article className={styles.previewCard} key={`${preview.file.name}-${preview.file.lastModified}-${index}`}>
-          <img src={preview.url} alt={`Selected ${previewLabel} image ${index + 1}`} />
-          {existingImageUrls.length === 0 && (index === 0
-            ? <span className={styles.primaryImageLabel}>Primary</span>
-            : <button type="button" className={styles.removeImageButton} style={{ left: 8, right: 'auto', borderColor: '#72eaff', color: '#72eaff' }} disabled={disabled} onClick={() => setFilePrimary(index)} aria-label={`Set selected ${previewLabel} image ${index + 1} as primary`}>Set as Primary</button>)}
-          <button type="button" className={styles.removeImageButton} disabled={disabled} onClick={() => removeFile(index)} aria-label={`Remove selected ${previewLabel} image ${index + 1}`}>Remove</button>
-        </article>)}
+        {existingImageUrls.map((url, index) => {
+          const isPrimary = !pendingPrimarySelected && index === 0
+          return <article className={styles.previewCard} key={url}>
+            <img src={url} alt={`Saved ${previewLabel} image ${index + 1}`} />
+            {isPrimary
+              ? <span className={styles.primaryImageLabel}>Primary</span>
+              : canSelectPrimary && <button type="button" className={styles.removeImageButton} style={{ left: 8, right: 'auto', borderColor: '#72eaff', color: '#72eaff' }} disabled={disabled} onClick={() => setExistingPrimary(index)} aria-label={`Set saved ${previewLabel} image ${index + 1} as primary`}>Set as Primary</button>}
+            <button type="button" className={styles.removeImageButton} disabled={disabled} onClick={() => removeExistingImage(index)} aria-label={`Remove saved ${previewLabel} image ${index + 1}`}>Remove</button>
+          </article>
+        })}
+        {previews.map((preview, index) => {
+          const isPrimary = index === 0 && (pendingPrimarySelected || existingImageUrls.length === 0)
+          return <article className={styles.previewCard} key={`${preview.file.name}-${preview.file.lastModified}-${index}`}>
+            <img src={preview.url} alt={`Selected ${previewLabel} image ${index + 1}`} />
+            {isPrimary
+              ? <span className={styles.primaryImageLabel}>Primary</span>
+              : canSelectPrimary && <button type="button" className={styles.removeImageButton} style={{ left: 8, right: 'auto', borderColor: '#72eaff', color: '#72eaff' }} disabled={disabled} onClick={() => setFilePrimary(index)} aria-label={`Set selected ${previewLabel} image ${index + 1} as primary`}>Set as Primary</button>}
+            <button type="button" className={styles.removeImageButton} disabled={disabled} onClick={() => removeFile(index)} aria-label={`Remove selected ${previewLabel} image ${index + 1}`}>Remove</button>
+          </article>
+        })}
       </div>}
     </div>
   )
