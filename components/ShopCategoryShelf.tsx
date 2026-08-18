@@ -10,6 +10,7 @@ type ShopCategoryShelfProps = {
 }
 
 export function ShopCategoryShelf({ category, products }: ShopCategoryShelfProps) {
+  const visibleProducts = products.slice(0, 6)
   const rowRef = useRef<HTMLDivElement>(null)
   const [canScroll, setCanScroll] = useState(false)
   const [atStart, setAtStart] = useState(true)
@@ -31,7 +32,7 @@ export function ShopCategoryShelf({ category, products }: ShopCategoryShelfProps
     const observer = new ResizeObserver(updateScrollState)
     observer.observe(row)
     return () => observer.disconnect()
-  }, [products.length, updateScrollState])
+  }, [visibleProducts.length, updateScrollState])
 
   function scrollShelf(direction: 1 | -1) {
     const row = rowRef.current
@@ -56,7 +57,7 @@ export function ShopCategoryShelf({ category, products }: ShopCategoryShelfProps
       </div>
     </header>
     <div className="shop-category-shelf-row" ref={rowRef} onScroll={updateScrollState}>
-      {products.map((product) => <ProductCard product={product} key={product.id} />)}
+      {visibleProducts.map((product) => <ProductCard product={product} key={product.id} />)}
     </div>
   </section>
 }

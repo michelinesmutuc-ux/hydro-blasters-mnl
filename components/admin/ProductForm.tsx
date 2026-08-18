@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
-import { deleteProductImages, uploadProductImages } from '../../lib/supabase/product-images'
+import { deleteProductImages, uploadProductImages } from '../../lib/r2/product-images'
 import { fetchAdminProduct, findAvailableProductSlug } from '../../lib/supabase/products'
 import { fetchProductSpecifications, normalizeSpecificationRows, replaceProductSpecifications } from '../../lib/supabase/product-specifications'
 import { fetchProductVariants, replaceProductVariants, validateVariants, type VariantDraft } from '../../lib/supabase/product-variants'

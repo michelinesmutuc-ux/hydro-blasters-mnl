@@ -28,6 +28,7 @@ type ShopFilters = {
 }
 
 const defaultShopFilters: ShopFilters = { search: '', category: '', productType: '', brand: '', highlight: '', sort: 'newest' }
+const SHOP_BATCH_SIZE = 12
 
 function filtersFromUrl(params: Pick<URLSearchParams, 'get'>): ShopFilters {
   const sort = params.get('sort')
@@ -65,6 +66,7 @@ export function ShopProducts() {
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<ShopFilters>(defaultShopFilters)
   const [urlReady, setUrlReady] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(SHOP_BATCH_SIZE)
   const isApplyingUrlState = useRef(false)
 
   useEffect(() => {
@@ -118,6 +120,8 @@ export function ShopProducts() {
     updateShopUrl(filters)
   }, [filters, urlReady])
 
+  useEffect(() => { setVisibleCount(SHOP_BATCH_SIZE) }, [filters])
+
   const categories = useMemo(() => Array.from(new Set(products.map((product) => product.category))).sort((a, b) => a.localeCompare(b)), [products])
   const brands = useMemo(() => Array.from(new Set(products.map((product) => product.brand).filter((brand): brand is string => Boolean(brand)))).sort((a, b) => a.localeCompare(b)), [products])
   const matchingProducts = useMemo(() => {
@@ -165,6 +169,7 @@ export function ShopProducts() {
       products: productsByCategory.get(category) ?? [],
     }))
   }, [matchingProducts])
+  const visibleFilteredProducts = matchingProducts.slice(0, visibleCount)
 
   function updateFilter<K extends keyof ShopFilters>(field: K, value: ShopFilters[K]) {
     setFilters((current) => ({ ...current, [field]: value }))
@@ -204,7 +209,7 @@ export function ShopProducts() {
       <button className="clear-filters" type="button" onClick={clearAllFilters}>Clear all filters</button>
     </div>
     {!isDefaultShelfMode ? <section className="shop-filtered-state" aria-label="Active shop filters"><div className="shop-filtered-state-heading"><div><p className="eyebrow">Filtered products</p><h2>{filteredResultsTitle}</h2><p>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}</p></div><button type="button" onClick={clearAllFilters}>← Back to all categories</button></div>{activeFilterChips.length > 0 && <div className="shop-active-filter-chips" aria-label="Active filters">{activeFilterChips.map((chip) => <button type="button" key={chip.key} onClick={() => clearSingleFilter(chip.key)}>{chip.label} <span aria-hidden="true">×</span><span className="sr-only">Remove filter</span></button>)}</div>}</section> : <div className="shop-filter-status"><span>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}</span></div>}
-    {matchingProducts.length > 0 ? isDefaultShelfMode ? <div className="shop-category-shelves">{categoryShelves.map((shelf) => <ShopCategoryShelf category={shelf.category} products={shelf.products} key={shelf.category} />)}</div> : <div className="product-grid">{matchingProducts.map((product) => <ProductCard product={product} key={product.id} />)}</div> : <div className="catalogue-state">No active products match your current search and filters. Try clearing a filter or searching for something else.</div>}
+    {matchingProducts.length > 0 ? isDefaultShelfMode ? <div className="shop-category-shelves">{categoryShelves.map((shelf) => <ShopCategoryShelf category={shelf.category} products={shelf.products} key={shelf.category} />)}</div> : <><div className="product-grid">{visibleFilteredProducts.map((product, index) => <ProductCard product={product} eagerImage={index < 4} key={product.id} />)}</div>{visibleCount < matchingProducts.length && <div className="product-list-more"><button className="secondary-button" type="button" onClick={() => setVisibleCount((count) => count + SHOP_BATCH_SIZE)}>Load More</button></div>}</> : <div className="catalogue-state">No active products match your current search and filters. Try clearing a filter or searching for something else.</div>}
     <ShopFloatingCheckout />
   </div>
 }

@@ -39,5 +39,6 @@ export function PublicProducts({ homepageHighlights = false }: PublicProductsPro
   if (error) return <div className="catalogue-state" role="alert">Products are unavailable right now. Please try again later.</div>
   if (products.length === 0) return <div className="catalogue-state">{homepageHighlights ? 'No homepage highlights have been selected yet. Please check back soon.' : 'There are no active products to display yet. Please check back soon.'}</div>
 
-  return <><div className="product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div><ShopFloatingCheckout /></>
+  const visibleProducts = homepageHighlights ? products.slice(0, 6) : products
+  return <><div className="product-grid">{visibleProducts.map((product, index) => <ProductCard product={product} eagerImage={index < 3} key={product.id} />)}</div>{homepageHighlights && products.length > visibleProducts.length && <div className="product-list-more"><a className="secondary-button" href="/shop">View All Products</a></div>}<ShopFloatingCheckout /></>
 }

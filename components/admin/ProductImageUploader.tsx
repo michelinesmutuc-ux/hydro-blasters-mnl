@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useId, useMemo, useState } from 'react'
-import { acceptedImageTypes } from '../../lib/supabase/product-images'
+import { acceptedImageTypes } from '../../lib/r2/product-images'
+import { optimizedProductImageUrl } from '../ProductImageFrame'
 import styles from './admin.module.css'
 
 type ProductImageUploaderProps = {
@@ -86,7 +87,7 @@ export function ProductImageUploader({ files, onFilesChange, existingImageUrls =
         {existingImageUrls.map((url, index) => {
           const isPrimary = !pendingPrimarySelected && index === 0
           return <article className={styles.previewCard} key={url}>
-            <img src={url} alt={`Saved ${previewLabel} image ${index + 1}`} />
+            <img src={optimizedProductImageUrl(url, 'card')} alt={`Saved ${previewLabel} image ${index + 1}`} loading="lazy" decoding="async" />
             {isPrimary
               ? <span className={styles.primaryImageLabel}>Primary</span>
               : canSelectPrimary && <button type="button" className={styles.removeImageButton} style={{ left: 8, right: 'auto', borderColor: '#72eaff', color: '#72eaff' }} disabled={disabled} onClick={() => setExistingPrimary(index)} aria-label={`Set saved ${previewLabel} image ${index + 1} as primary`}>Set as Primary</button>}
