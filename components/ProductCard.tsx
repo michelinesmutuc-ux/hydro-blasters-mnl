@@ -34,7 +34,6 @@ export type PublicProduct = {
 type ProductCardProps = {
   product: PublicProduct
   actions?: ReactNode
-  eagerImage?: boolean
 }
 
 function peso(value: number | string) {
@@ -48,14 +47,14 @@ const highlightLabels: Record<HomepageHighlightType, string> = {
   limited_stock: 'Limited Stock',
 }
 
-export function ProductCard({ product, actions, eagerImage = false }: ProductCardProps) {
+export function ProductCard({ product, actions }: ProductCardProps) {
   const imageUrl = product.image_urls[0]
   const productHref = getProductUrl(product)
   const homepageBadge = product.highlight_type && product.highlight_type in highlightLabels ? product.highlight_type : null
   return (
     <article className="product-card">
       <Link className="shop-product-link" href={productHref} aria-label={`View ${product.name}`}>
-        <ProductImageFrame src={imageUrl} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="card" eager={eagerImage} />
+        <ProductImageFrame src={imageUrl} alt={product.name} fallbackLabel={`Image unavailable for ${product.name}`} variant="card" />
       </Link>
       <div className="product-card-body">
         {product.is_clearance ? <span className="product-highlight-badge product-highlight-clearance_sale">Clearance Sale</span> : homepageBadge && <span className={`product-highlight-badge product-highlight-${homepageBadge}`}>{highlightLabels[homepageBadge]}</span>}

@@ -3,8 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../../lib/supabase/client'
-import { deleteProductImages } from '../../lib/r2/product-images'
-import { optimizedProductImageUrl } from '../ProductImageFrame'
+import { deleteProductImages } from '../../lib/supabase/product-images'
 import { fetchAdminProducts } from '../../lib/supabase/products'
 import { markWebsiteChangesUnpublished } from '../../lib/admin/publishing'
 import { requireAdminSession } from '../../lib/admin/auth'
@@ -581,7 +580,7 @@ export function ProductsTable() {
         const highlightsDraft = highlightDrafts[product.id] ?? highlightDraftForProduct(product)
         const highlightLabels = [isNewArrival(product) ? 'New Arrivals' : '', product.is_best_seller ? 'Best Seller' : '', product.is_clearance ? 'Clearance' : ''].filter(Boolean)
         return <tr key={product.id}>
-          <td>{product.image_urls[0] ? <img className={styles.tableImage} src={optimizedProductImageUrl(product.image_urls[0], 'card')} alt="" loading="lazy" decoding="async" /> : <div className={styles.thumbnail}>Image</div>}</td>
+          <td>{product.image_urls[0] ? <img className={styles.tableImage} src={product.image_urls[0]} alt="" /> : <div className={styles.thumbnail}>Image</div>}</td>
           <td>{product.name}</td>
           <td className={styles.placeholderText}>{product.brand ?? '—'}</td>
           <td>{categoryIsEditing ? <div className={styles.categoryEditor}><select aria-label={`${product.name} category`} value={categoryDraft} disabled={categoryIsSaving} onChange={(event) => updateCategoryDraft(product, event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCategory(product, categoryDraft, categoryTypeDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingCategory(product) } }}>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select>{isGelBlasterCategory(categoryDraft) && <select aria-label={`${product.name} Gel Blaster Type`} value={categoryTypeDraft} disabled={categoryIsSaving} onChange={(event) => setCategoryTypeDrafts((current) => ({ ...current, [product.id]: event.target.value as GelBlasterType | '' }))} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCategory(product, categoryDraft, categoryTypeDraft) } if (event.key === 'Escape') { event.preventDefault(); cancelEditingCategory(product) } }}><option value="">Select Type</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select>}<div><button type="button" disabled={categoryIsSaving} onClick={() => void saveCategory(product, categoryDraft, categoryTypeDraft)}>{categoryIsSaving ? 'Saving…' : 'Save'}</button><button type="button" disabled={categoryIsSaving} onClick={() => cancelEditingCategory(product)}>Cancel</button></div></div> : <div className={styles.categoryDisplay}><span>{product.category}</span><button type="button" className={styles.priceEditAction} aria-label={`Edit ${product.name} category`} title="Quick edit category" onClick={() => startEditingCategory(product)}>✎</button></div>}</td>
