@@ -7,9 +7,10 @@ import { ProductCard, type PublicProduct } from './ProductCard'
 type ShopCategoryShelfProps = {
   category: string
   products: PublicProduct[]
+  eagerImageIds?: Set<string>
 }
 
-export function ShopCategoryShelf({ category, products }: ShopCategoryShelfProps) {
+export function ShopCategoryShelf({ category, products, eagerImageIds = new Set() }: ShopCategoryShelfProps) {
   const rowRef = useRef<HTMLDivElement>(null)
   const [canScroll, setCanScroll] = useState(false)
   const [atStart, setAtStart] = useState(true)
@@ -56,7 +57,7 @@ export function ShopCategoryShelf({ category, products }: ShopCategoryShelfProps
       </div>
     </header>
     <div className="shop-category-shelf-row" ref={rowRef} onScroll={updateScrollState}>
-      {products.map((product) => <ProductCard product={product} key={product.id} />)}
+      {products.map((product) => <ProductCard product={product} eagerImage={eagerImageIds.has(product.id)} key={product.id} />)}
     </div>
   </section>
 }

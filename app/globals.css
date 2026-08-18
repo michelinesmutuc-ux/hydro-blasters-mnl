@@ -119,6 +119,7 @@ footer { padding:34px 20px 42px; border-top:1px solid var(--line); }.footer-bran
 /* A card frame gets its height from aspect-ratio, so make its image fill that
    definite box before object-fit calculates its contained rendering. */
 .product-image-frame-card{position:relative}
+.product-list-more{display:flex;justify-content:center;margin-top:24px}.product-list-more button{cursor:pointer}
 .product-image-frame-card img{position:absolute;inset:0;width:100%;height:100%}
 .product-image-frame-main{position:relative}
 .product-image-frame-main img{position:absolute;inset:0;width:100%;height:100%}

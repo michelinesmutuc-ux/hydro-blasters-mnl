@@ -86,7 +86,7 @@ export function ProductImageUploader({ files, onFilesChange, existingImageUrls =
         {existingImageUrls.map((url, index) => {
           const isPrimary = !pendingPrimarySelected && index === 0
           return <article className={styles.previewCard} key={url}>
-            <img src={url} alt={`Saved ${previewLabel} image ${index + 1}`} />
+            <img src={url} alt={`Saved ${previewLabel} image ${index + 1}`} loading="lazy" decoding="async" />
             {isPrimary
               ? <span className={styles.primaryImageLabel}>Primary</span>
               : canSelectPrimary && <button type="button" className={styles.removeImageButton} style={{ left: 8, right: 'auto', borderColor: '#72eaff', color: '#72eaff' }} disabled={disabled} onClick={() => setExistingPrimary(index)} aria-label={`Set saved ${previewLabel} image ${index + 1} as primary`}>Set as Primary</button>}
@@ -96,7 +96,7 @@ export function ProductImageUploader({ files, onFilesChange, existingImageUrls =
         {previews.map((preview, index) => {
           const isPrimary = index === 0 && (pendingPrimarySelected || existingImageUrls.length === 0)
           return <article className={styles.previewCard} key={`${preview.file.name}-${preview.file.lastModified}-${index}`}>
-            <img src={preview.url} alt={`Selected ${previewLabel} image ${index + 1}`} />
+            <img src={preview.url} alt={`Selected ${previewLabel} image ${index + 1}`} loading="lazy" decoding="async" />
             {isPrimary
               ? <span className={styles.primaryImageLabel}>Primary</span>
               : canSelectPrimary && <button type="button" className={styles.removeImageButton} style={{ left: 8, right: 'auto', borderColor: '#72eaff', color: '#72eaff' }} disabled={disabled} onClick={() => setFilePrimary(index)} aria-label={`Set selected ${previewLabel} image ${index + 1} as primary`}>Set as Primary</button>}
