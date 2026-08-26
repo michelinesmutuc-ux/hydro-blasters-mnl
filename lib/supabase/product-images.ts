@@ -24,24 +24,32 @@ function loadImage(file: File) {
 }
 
 async function optimizeImage(file: File) {
-  try {
-    const image = await loadImage(file)
-    const largestDimension = Math.max(image.naturalWidth, image.naturalHeight)
-    const scale = largestDimension > MAX_IMAGE_DIMENSION ? MAX_IMAGE_DIMENSION / largestDimension : 1
-    const width = Math.max(1, Math.round(image.naturalWidth * scale))
-    const height = Math.max(1, Math.round(image.naturalHeight * scale))
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')
-    if (!context) return file
+  const image = await loadImage(file)
+  const largestDimension = Math.max(image.naturalWidth, image.naturalHeight)
+  const scale = largestDimension > MAX_IMAGE_DIMENSION ? MAX_IMAGE_DIMENSION / largestDimension : 1
+  const width = Math.max(1, Math.round(image.naturalWidth * scale))
+  const height = Math.max(1, Math.round(image.naturalHeight * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error(`Could not convert ${file.name}: this browser could not create an image canvas.`)
 
-    context.drawImage(image, 0, 0, width, height)
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', IMAGE_QUALITY))
-    return blob ? new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, { type: 'image/webp' }) : file
-  } catch {
-    return file
+  context.drawImage(image, 0, 0, width, height)
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', IMAGE_QUALITY))
+  if (!blob) throw new Error(`Could not convert ${file.name} to WebP. Please try another browser or image file.`)
+
+  const signature = new Uint8Array(await blob.slice(0, 12).arrayBuffer())
+  const isWebp = signature.length >= 12
+    && signature[0] === 0x52 && signature[1] === 0x49 && signature[2] === 0x46 && signature[3] === 0x46
+    && signature[8] === 0x57 && signature[9] === 0x45 && signature[10] === 0x42 && signature[11] === 0x50
+  if (blob.type !== 'image/webp' || !isWebp) {
+    throw new Error(`Could not verify ${file.name} as a genuine WebP image. Nothing was uploaded.`)
   }
+
+  const converted = new File([blob], `${file.name.replace(/\.[^.]+$/, '')}.webp`, { type: 'image/webp' })
+  await loadImage(converted)
+  return converted
 }
 
 type UploadProductImagesOptions = {

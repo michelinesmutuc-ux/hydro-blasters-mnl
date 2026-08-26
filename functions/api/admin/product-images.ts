@@ -75,6 +75,17 @@ function extensionForType(type: string) {
   return 'jpg'
 }
 
+function detectedImageType(bytes: Uint8Array) {
+  if (bytes.length >= 12
+    && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+    && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'image/webp'
+  if (bytes.length >= 8
+    && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    && bytes[4] === 0x0d && bytes[5] === 0x0a && bytes[6] === 0x1a && bytes[7] === 0x0a) return 'image/png'
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
+  return null
+}
+
 function dateStamp() {
   const now = new Date()
   const month = String(now.getUTCMonth() + 1).padStart(2, '0')
@@ -104,13 +115,17 @@ export async function onRequestPost({ request, env }: PagesContext) {
   if (!ALLOWED_IMAGE_TYPES.has(file.type)) return json({ error: 'Only JPG, PNG, and WebP images are allowed.' }, 415)
   if (file.size <= 0 || file.size > MAX_UPLOAD_BYTES) return json({ error: 'Image must be larger than 0 bytes and no more than 12 MB.' }, 413)
 
-  const randomId = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
-  const key = `products/${productId}/image-${dateStamp()}-${randomId}.${extensionForType(file.type)}`
   const bytes = await file.arrayBuffer()
+  const actualType = detectedImageType(new Uint8Array(bytes))
+  if (!actualType) return json({ error: 'The uploaded file is not a valid JPG, PNG, or WebP image.' }, 415)
+  if (actualType !== file.type) return json({ error: `The image contents do not match the declared ${file.type} format. Nothing was uploaded.` }, 415)
+
+  const randomId = crypto.randomUUID().replaceAll('-', '').slice(0, 8)
+  const key = `products/${productId}/image-${dateStamp()}-${randomId}.${extensionForType(actualType)}`
 
   await env.PRODUCT_IMAGES_R2.put(key, bytes, {
     httpMetadata: {
-      contentType: file.type,
+      contentType: actualType,
       cacheControl: 'public, max-age=31536000, immutable',
     },
   })
