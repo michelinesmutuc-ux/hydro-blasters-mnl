@@ -1,6 +1,5 @@
 import { supabase, supabasePublishableKey, supabaseUrl } from '../supabase/client'
 
-export const promoReservationTimeoutMs = 8_000
 export const proofReadTimeoutMs = 15_000
 export const orderSubmissionTimeoutMs = 45_000
 
@@ -13,21 +12,9 @@ const proofSignatures: { contentType: SupportedProofType; matches: (bytes: Uint8
 ]
 
 export class CheckoutTimeoutError extends Error {
-  constructor(public readonly code: 'promo_timeout' | 'proof_read_timeout' | 'order_timeout', message: string) {
+  constructor(public readonly code: 'proof_read_timeout' | 'order_timeout', message: string) {
     super(message)
     this.name = 'CheckoutTimeoutError'
-  }
-}
-
-export async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, error: CheckoutTimeoutError) {
-  let timeout: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(error), timeoutMs) }),
-    ])
-  } finally {
-    if (timeout) clearTimeout(timeout)
   }
 }
 

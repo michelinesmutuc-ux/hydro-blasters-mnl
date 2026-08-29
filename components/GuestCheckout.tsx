@@ -22,29 +22,6 @@ const paymentMethods: { id: PaymentMethod; name: string; description: string }[]
 ]
 const maximumProofSize = 5 * 1024 * 1024
 
-import { getOrCreateCheckoutSessionId, getOrCreateLaunchPromoReservation, type CheckoutReservation } from '../lib/promotions/checkout-reservation'
-
-type PromoReservation = CheckoutReservation | { status: 'loading'; expiresAt?: string; serverNow?: string; eligibleSubtotal: number; discount: number }
-
-function LaunchPromoReservation({ reservation, onRetry, onExpired }: { reservation: PromoReservation; onRetry: () => void; onExpired: () => void }) {
-  const [remaining, setRemaining] = useState<number | null>(null)
-  useEffect(() => {
-    if (reservation.status !== 'reserved' || !reservation.expiresAt || !reservation.serverNow) { setRemaining(null); return }
-    const initialRemaining = new Date(reservation.expiresAt).getTime() - new Date(reservation.serverNow).getTime()
-    const clientStartedAt = Date.now()
-    const updateTimer = () => setRemaining(Math.max(0, Math.ceil((initialRemaining - (Date.now() - clientStartedAt)) / 1000)))
-    updateTimer(); const interval = window.setInterval(updateTimer, 1000); return () => window.clearInterval(interval)
-  }, [reservation])
-  useEffect(() => { if (remaining === 0 && reservation.status === 'reserved') onExpired() }, [onExpired, remaining, reservation.status])
-  if (reservation.status === 'loading') return <section className="launch-promo-reservation"><strong>Checking Launch Promo availability…</strong></section>
-  if (reservation.status === 'expired' || remaining === 0) return <section className="launch-promo-reservation launch-promo-unavailable"><strong>Launch Promo reservation expired</strong><span>Your reserved promo time has ended. Check again to see whether a public promo slot is now available.</span><button type="button" onClick={onRetry}>Check Promo Availability</button></section>
-  if (reservation.status === 'error') return <section className="launch-promo-reservation launch-promo-unavailable"><strong>Launch Promo availability could not be checked.</strong><span>You can continue at the displayed full price.</span><button type="button" onClick={onRetry}>Try Again</button></section>
-  if (reservation.status !== 'reserved') return <section className="launch-promo-reservation launch-promo-unavailable"><strong>Launch Promo slots are currently fully reserved or claimed.</strong><span>Checkout shows your normal total before you place your order.</span></section>
-  if (remaining === null) return <section className="launch-promo-reservation"><strong>Checking your Launch Promo reservation…</strong></section>
-  const minutes = Math.floor(remaining / 60); const seconds = remaining % 60
-  return <section className={`launch-promo-reservation${remaining <= 300 ? ' launch-promo-expiring' : ''}`} role="status"><strong>🎉 Launch Promo Reserved</strong><span>{reservation.discount > 0 ? 'Your 10% launch discount is secured for this checkout.' : 'Your promo reservation remains active; Clearance Sale products are not eligible for this discount.'}</span><b>Time remaining <output>{minutes}:{String(seconds).padStart(2, '0')}</output></b><small>Complete your order before the timer ends to keep your promo.</small></section>
-}
-
 export function GuestCheckout() {
   const { lines, subtotal, clear } = useCart()
   const router = useRouter()
@@ -64,9 +41,7 @@ export function GuestCheckout() {
   const [submissionRecovery, setSubmissionRecovery] = useState(false)
   const [technicalFailure, setTechnicalFailure] = useState(false)
   const [qrAvailable, setQrAvailable] = useState(true)
-  const [promoReservation, setPromoReservation] = useState<PromoReservation>({ status: 'loading', eligibleSubtotal: 0, discount: 0 })
   const orderAttemptKey = useRef<string | null>(null)
-  const checkoutSessionId = useRef<string | null>(null)
   const diagnosticAttemptId = useRef<string | null>(null)
   const proofInputRef = useRef<HTMLInputElement | null>(null)
   const paymentSectionRef = useRef<HTMLElement | null>(null)
@@ -80,30 +55,6 @@ export function GuestCheckout() {
 
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
 
-  const reservePromo = useCallback(async (allowRecheck = false) => {
-    if (!lines.length) return
-    setPromoReservation((current) => allowRecheck ? { status: 'loading', eligibleSubtotal: 0, discount: 0 } : current)
-    const attemptId = getDiagnosticAttemptId()
-    logCheckoutDiagnostic({ attemptId, eventCode: 'promo_started', phase: 'promo' })
-    try {
-      const sessionId = checkoutSessionId.current || getOrCreateCheckoutSessionId()
-      checkoutSessionId.current = sessionId
-      const result = await getOrCreateLaunchPromoReservation(lines, allowRecheck)
-      setPromoReservation(result)
-      if (result.status === 'error') {
-        setTechnicalFailure(true)
-        logCheckoutDiagnostic({ attemptId, eventCode: result.failureReason === 'timeout' ? 'promo_timed_out' : 'promo_failed', phase: 'promo', errorCode: result.failureReason ?? 'promo_unavailable' })
-      } else {
-        logCheckoutDiagnostic({ attemptId, eventCode: 'promo_completed', phase: 'promo', errorCode: result.status })
-      }
-    } catch {
-      setPromoReservation({ status: 'error', eligibleSubtotal: 0, discount: 0 })
-      setTechnicalFailure(true)
-      logCheckoutDiagnostic({ attemptId, eventCode: 'promo_failed', phase: 'promo', errorCode: 'client_state_error' })
-    }
-  }, [getDiagnosticAttemptId, lines])
-
-  useEffect(() => { void reservePromo() }, [reservePromo])
   useEffect(() => {
     let mounted = true
     void supabase.from('same_day_delivery_nearby_cities').select('city,province').eq('active', true).then(({ data }) => {
@@ -111,11 +62,6 @@ export function GuestCheckout() {
     })
     return () => { mounted = false }
   }, [])
-  useEffect(() => {
-    const revalidateWhenVisible = () => { if (document.visibilityState === 'visible') void reservePromo() }
-    document.addEventListener('visibilitychange', revalidateWhenVisible)
-    return () => document.removeEventListener('visibilitychange', revalidateWhenVisible)
-  }, [reservePromo])
   useEffect(() => {
     if (delivery === 'same_day_delivery' && !isSameDayEligibleLocation(form.city_municipality, form.region, sameDayNearbyAreas)) {
       setDelivery('nationwide_delivery')
@@ -132,16 +78,13 @@ export function GuestCheckout() {
   const sameDayEligible = isSameDayEligibleLocation(form.city_municipality, form.region, sameDayNearbyAreas)
   const sameDay = delivery === 'same_day_delivery'
   const shipping = delivery === 'nationwide_delivery' ? shippingQuote.fee : 0
-  const checkoutDiscount = promoReservation.status === 'reserved' ? promoReservation.discount : 0
-  const discountedMerchandise = Math.max(0, subtotal - checkoutDiscount)
-  const codFee = payment === 'cash_on_delivery' ? Math.ceil(discountedMerchandise * .01) : 0
+  const codFee = payment === 'cash_on_delivery' ? Math.ceil(subtotal * .01) : 0
   const pickup = payment === 'pay_upon_pickup'
-  const dueNow = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : discountedMerchandise + shipping
-  const overallTotal = discountedMerchandise + shipping + codFee
+  const dueNow = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : subtotal + shipping
+  const overallTotal = subtotal + shipping + codFee
   const proofNeeded = !pickup
   const blockingReasons = [
     ...(saving ? [{ code: 'saving', message: 'Your order is being submitted. Please wait.' }] : []),
-    ...(promoReservation.status === 'loading' ? [{ code: 'promo_loading', message: 'Checking promo availability…' }] : []),
     ...(!payment ? [{ code: 'payment_missing', message: 'Choose a payment method.' }] : []),
     ...(payment === 'bank_transfer' && !bankOptionId ? [{ code: 'bank_missing', message: 'Choose your bank.' }] : []),
     ...(payment !== null && proofNeeded && !qrAvailable && !proof && (payment !== 'bank_transfer' || Boolean(bankOptionId)) ? [{ code: 'payment_details_loading', message: 'Payment details are still loading.' }] : []),
@@ -295,7 +238,7 @@ export function GuestCheckout() {
           same_day_acknowledged: sameDayAcknowledged,
           payment_method: payment,
           payment_option_name: getPaymentOption(payment, bankOptionId)?.name ?? null,
-          items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })), checkout_session_id: checkoutSessionId.current || getOrCreateCheckoutSessionId(),
+          items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })),
           idempotency_key: getOrderAttemptKey(),
           payment_proof: paymentProof,
       }, controller.signal)
@@ -346,7 +289,6 @@ export function GuestCheckout() {
     }}>
       {error && <p className="checkout-error" role="alert">{error}</p>}
       <div className="checkout-fields">
-        <LaunchPromoReservation reservation={promoReservation} onRetry={() => void reservePromo(true)} onExpired={() => setPromoReservation((current) => current.status === 'reserved' ? { ...current, status: 'expired', discount: 0 } : current)} />
         <section className="checkout-card"><h2>Customer Information</h2><div className="checkout-grid">
           <label>First Name (Given Name) <em>Required</em><input required autoComplete="given-name" value={form.first_name} onChange={(event) => update('first_name', event.target.value)} /></label>
           <label>Last Name (Surname) <em>Required</em><input required autoComplete="family-name" value={form.last_name} onChange={(event) => update('last_name', event.target.value)} /></label>
@@ -364,7 +306,7 @@ export function GuestCheckout() {
           <div className="payment-methods" role="radiogroup" aria-label="Payment method">
             {paymentMethods.filter((method) => !(sameDay && method.id === 'cash_on_delivery')).map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.description}</small></span></button>)}
           </div>
-          {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><section><h3>Pay Now</h3><div><span>Shipping — {shippingQuote.shippingClass}</span><strong>{peso(shipping)}</strong></div><div><span>1% COD service fee</span><strong>{peso(codFee)}</strong></div><div className="cod-primary-amount"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div></section><section><h3>Pay Upon Delivery</h3><div><span>Merchandise subtotal</span><strong>{peso(subtotal)}</strong></div>{checkoutDiscount > 0 && <div><span>Launch Promo</span><strong>−{peso(checkoutDiscount)}</strong></div>}<div><span>Amount Due to Rider</span><strong>{peso(discountedMerchandise)}</strong></div></section><section className="cod-order-value"><h3>Order Value</h3><div><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></section></div>}
+          {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><section><h3>Pay Now</h3><div><span>Shipping — {shippingQuote.shippingClass}</span><strong>{peso(shipping)}</strong></div><div><span>1% COD service fee</span><strong>{peso(codFee)}</strong></div><div className="cod-primary-amount"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div></section><section><h3>Pay Upon Delivery</h3><div><span>Merchandise subtotal</span><strong>{peso(subtotal)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div></section><section className="cod-order-value"><h3>Order Value</h3><div><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></section></div>}
           {payment && proofNeeded && <PaymentQr method={payment} amount={dueNow} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
           {payment && proofNeeded && (qrAvailable || proof) && <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input ref={proofInputRef} required type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => void selectProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proofError && <p className="proof-error" role="alert">{proofError}</p>}{proof && previewUrl && <img src={previewUrl} alt="Payment screenshot preview" />}</div>}
           {payment === 'pay_upon_pickup' && <label className="checkout-check"><input type="checkbox" checked={reservation} onChange={(event) => setReservation(event.target.checked)} /> I understand that this is only a reservation request and I must wait for Hydro Blasters MNL to confirm before visiting.</label>}
@@ -372,7 +314,7 @@ export function GuestCheckout() {
         </section>
         <section className="checkout-final-cta"><p className="eyebrow">Ready to submit your order?</p><SummarySubmit /></section>
       </div>
-      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name}{line.variant_name ? <small>{line.variant_group_name || 'Option'}: {line.variant_name}</small> : null}{line.is_clearance ? <small className="clearance-exclusion">Clearance Sale — additional promos excluded</small> : null} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{promoReservation.status === 'reserved' && promoReservation.discount > 0 && <div className="launch-promo-estimate"><strong>Launch Promo (10% Off)</strong><span>−{peso(promoReservation.discount)} secured for this checkout.</span></div>}{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(discountedMerchandise)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div>{promoReservation.status === 'reserved' && promoReservation.discount > 0 && <div><dt>Launch Promo (10% Off)</dt><dd>−{peso(promoReservation.discount)}</dd></div>}<div><dt>{sameDay ? 'Same-Day / On-Demand Delivery' : `Shipping — ${shippingQuote.shippingClass}`}</dt><dd>{peso(shipping)}</dd></div>{sameDay && <p className="same-day-summary-note">Courier fee paid directly to your rider.</p>}<div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
+      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name}{line.variant_name ? <small>{line.variant_group_name || 'Option'}: {line.variant_name}</small> : null}{line.is_clearance ? <small className="clearance-exclusion">Clearance Sale</small> : null} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>{sameDay ? 'Same-Day / On-Demand Delivery' : `Shipping — ${shippingQuote.shippingClass}`}</dt><dd>{peso(shipping)}</dd></div>{sameDay && <p className="same-day-summary-note">Courier fee paid directly to rider.</p>}<div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
     </form>
   </section>
 }

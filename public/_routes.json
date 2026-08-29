@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "include": ["/api/admin/product-images"],
+  "include": ["/api/admin/product-images", "/media/*"],
   "exclude": []
 }

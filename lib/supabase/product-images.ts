@@ -1,8 +1,8 @@
 import { requireAdminSession } from '../admin/auth'
+import { productImageKeyFromUrl, PRODUCT_IMAGE_DELIVERY_ORIGIN, PRODUCT_IMAGE_MEDIA_PREFIX } from '../images/delivery'
 
 const MAX_IMAGE_DIMENSION = 2048
 const IMAGE_QUALITY = 0.86
-const R2_PUBLIC_BASE_URL = 'https://pub-fbd9108fe1ba4469a1ac5c6bb8204840.r2.dev'
 const PRODUCT_IMAGE_ENDPOINT = '/api/admin/product-images'
 
 export const acceptedImageTypes = ['image/jpeg', 'image/png', 'image/webp'] as const
@@ -94,31 +94,18 @@ export async function uploadProductImages({ files, productId, onProgress }: Uplo
 
     if (!response.ok) throw new Error(`Could not upload ${sourceFile.name}. ${result.error || `Upload service returned ${response.status}.`}`)
     if (!result.publicUrl) throw new Error(`Could not create a public URL for ${sourceFile.name}.`)
-    if (!result.publicUrl.startsWith(`${R2_PUBLIC_BASE_URL}/products/`)) throw new Error(`Upload service returned an unexpected image URL for ${sourceFile.name}.`)
+    if (!result.publicUrl.startsWith(`${PRODUCT_IMAGE_DELIVERY_ORIGIN}${PRODUCT_IMAGE_MEDIA_PREFIX}products/`) || !productImageKeyFromUrl(result.publicUrl)) throw new Error(`Upload service returned an unexpected image URL for ${sourceFile.name}.`)
 
     urls.push(result.publicUrl)
     onProgress(index + 1, files.length)
   }
 
-  console.log('[Hydro Blasters MNL] Generated R2 public URLs:', urls)
+  console.log('[Hydro Blasters MNL] Generated product image URLs:', urls)
   return urls
 }
 
-function r2KeyFromPublicUrl(url: string) {
-  try {
-    const parsed = new URL(url)
-    const publicBase = new URL(R2_PUBLIC_BASE_URL)
-    if (parsed.origin !== publicBase.origin) return null
-    const key = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''))
-    if (!key.startsWith('products/')) return null
-    return key || null
-  } catch {
-    return null
-  }
-}
-
 export async function deleteProductImages(imageUrls: string[]) {
-  const keys = imageUrls.map(r2KeyFromPublicUrl).filter((key): key is string => Boolean(key))
+  const keys = imageUrls.map(productImageKeyFromUrl).filter((key): key is string => Boolean(key))
   if (keys.length === 0) return
 
   const session = await requireAdminSession()

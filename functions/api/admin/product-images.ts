@@ -8,7 +8,7 @@ type PagesEnv = {
   NEXT_PUBLIC_SUPABASE_URL: string
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?: string
   NEXT_PUBLIC_SUPABASE_ANON_KEY?: string
-  R2_PUBLIC_BASE_URL?: string
+  IMAGE_DELIVERY_BASE_URL?: string
 }
 
 type PagesContext = {
@@ -16,7 +16,7 @@ type PagesContext = {
   env: PagesEnv
 }
 
-const DEFAULT_PUBLIC_BASE_URL = 'https://pub-fbd9108fe1ba4469a1ac5c6bb8204840.r2.dev'
+const DEFAULT_IMAGE_DELIVERY_BASE_URL = 'https://hydro-blasters-mnl.pages.dev/media'
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 const MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 
@@ -28,7 +28,7 @@ function json(body: unknown, status = 200) {
 }
 
 function getPublicBaseUrl(env: PagesEnv) {
-  return (env.R2_PUBLIC_BASE_URL?.trim() || DEFAULT_PUBLIC_BASE_URL).replace(/\/+$/, '')
+  return (env.IMAGE_DELIVERY_BASE_URL?.trim() || DEFAULT_IMAGE_DELIVERY_BASE_URL).replace(/\/+$/, '')
 }
 
 function supabaseConfig(env: PagesEnv) {

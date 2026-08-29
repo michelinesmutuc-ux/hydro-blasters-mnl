@@ -562,7 +562,7 @@ export function ProductForm({ mode }: ProductFormProps) {
             <span className={styles.fieldLegend}>Product Highlights</span>
             <div className={styles.toggleRow}>
               <label className={styles.toggle}><span><strong>New Arrivals</strong><span>Show this product in the homepage New Arrivals selection and Shop filter.</span></span><input className={styles.switch} type="checkbox" checked={draft.showOnHomepage && draft.highlightType === 'new_arrival'} onChange={(event) => setDraft((current) => ({ ...current, showOnHomepage: event.target.checked ? true : current.showOnHomepage, highlightType: event.target.checked ? 'new_arrival' : (current.highlightType === 'new_arrival' ? 'none' : current.highlightType) }))} /></label>
-              <label className={styles.toggle}><span><strong>Clearance Sale</strong><span>Automatically excludes this product from Launch Promo.</span></span><input className={styles.switch} type="checkbox" checked={draft.isClearance} onChange={(event) => update('isClearance', event.target.checked)} /></label>
+              <label className={styles.toggle}><span><strong>Clearance Sale</strong><span>Marks this product as part of the Clearance Sale.</span></span><input className={styles.switch} type="checkbox" checked={draft.isClearance} onChange={(event) => update('isClearance', event.target.checked)} /></label>
               <label className={styles.toggle}><span><strong>Best Seller</strong><span>Include in the Best Seller highlight filter.</span></span><input className={styles.switch} type="checkbox" checked={draft.isBestSeller} onChange={(event) => update('isBestSeller', event.target.checked)} /></label>
             </div>
           </div>
