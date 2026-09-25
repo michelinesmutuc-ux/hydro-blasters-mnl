@@ -1,3 +1,4 @@
+import { ProductSearchLink } from '../components/ProductSearchLink'
 import { PublicProducts } from '../components/PublicProducts'
 import { CartLink } from '../components/CartLink'
 import { SiteFooter } from '../components/SiteFooter'
@@ -18,7 +19,7 @@ export default function Home() {
         </a>
         <PrimaryNavigation />
         <div className="header-actions">
-          <button className="icon-button" type="button" aria-label="Search">⌕</button>
+          <ProductSearchLink />
           <CartLink />
         </div>
       </header>

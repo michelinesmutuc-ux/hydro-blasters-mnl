@@ -68,6 +68,18 @@ export function ShopProducts() {
   const [urlReady, setUrlReady] = useState(false)
   const [visibleCount, setVisibleCount] = useState(SHOP_BATCH_SIZE)
   const isApplyingUrlState = useRef(false)
+  const searchInput = useRef<HTMLInputElement>(null)
+  const searchLinkFocused = useRef(false)
+
+  useEffect(() => {
+    // The field mounts after the catalogue loads, so native fragment navigation
+    // alone cannot reliably focus it (especially on a slow/mobile connection).
+    if (loading || error || searchLinkFocused.current || window.location.hash !== '#product-search') return
+    if (!searchInput.current) return
+    searchLinkFocused.current = true
+    searchInput.current.focus({ preventScroll: true })
+    searchInput.current.scrollIntoView({ block: 'center' })
+  }, [loading, error, products.length])
 
   useEffect(() => {
     isApplyingUrlState.current = true
@@ -198,7 +210,7 @@ export function ShopProducts() {
 
   return <div className="shop-catalogue">
     <div className="shop-controls" aria-label="Product search and filters">
-      <div className="shop-search"><label htmlFor="product-search">Search products</label><div><input id="product-search" type="search" value={filters.search} onChange={(event) => updateFilter('search', event.target.value)} placeholder="Search name, brand, category…" />{filters.search && <button type="button" onClick={() => updateFilter('search', '')}>Clear search</button>}</div></div>
+      <div className="shop-search"><label htmlFor="product-search">Search products</label><div><input ref={searchInput} id="product-search" type="search" value={filters.search} onChange={(event) => updateFilter('search', event.target.value)} placeholder="Search name, brand, category…" />{filters.search && <button type="button" onClick={() => updateFilter('search', '')}>Clear search</button>}</div></div>
       <div className="shop-filter-grid">
         <label className={filters.category ? 'shop-filter-field-active' : undefined}>Category<select value={filters.category} onChange={(event) => updateCategory(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
         {isGelBlasterCategory(filters.category) && <label className={filters.productType ? 'shop-filter-field-active' : undefined}>Type<select value={filters.productType} onChange={(event) => updateFilter('productType', event.target.value as GelBlasterType | '')}><option value="">All</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select></label>}

@@ -1,3 +1,4 @@
+import { ProductSearchLink } from '../../../components/ProductSearchLink'
 import { ProductDetails, type Product } from '../../../components/ProductDetails'
 import { supabase } from '../../../lib/supabase/client'
 import { fetchActiveProductBySlug } from '../../../lib/supabase/products'
@@ -63,7 +64,7 @@ export default async function ProductPage({ params: paramsPromise }: { params: P
       <header className="site-header">
         <a className="brand" href="/" aria-label="Go to Home"><img className="brand-logo" src="/hydro-blasters-mnl-logo.png" alt="Hydro Blasters MNL" /><span className="brand-home-label" aria-hidden="true">Home</span></a>
         <PrimaryNavigation />
-        <div className="header-actions"><button className="icon-button" type="button" aria-label="Search">⌕</button><CartLink /></div>
+        <div className="header-actions"><ProductSearchLink /><CartLink /></div>
       </header>
       <main><ProductDetails product={data as Product | null} specificationRows={specificationRows ?? []} variantRows={variantRows ?? []} recommendedAddons={recommendedAddons ?? []} error={error?.message} /></main>
       <SiteFooter />
