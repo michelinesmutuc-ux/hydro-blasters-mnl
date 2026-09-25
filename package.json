@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node scripts/generate-cod-migration.mjs --check && next build",
     "start": "next start",
-    "lint": "tsc --noEmit",
+    "lint": "node scripts/generate-cod-migration.mjs --check && tsc --noEmit",
     "r2:copy-verify-product-images": "node scripts/copy-referenced-product-images-to-r2.mjs",
     "r2:switch-product-image-urls": "node scripts/switch-referenced-product-image-urls-to-r2.mjs"
   },

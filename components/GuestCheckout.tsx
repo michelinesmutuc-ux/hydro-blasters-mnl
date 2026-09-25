@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '../lib/supabase/client'
 import { useCart } from './CartProvider'
+import { calculateCodServiceFee, codServiceFeeLabel } from '../lib/cod'
 import { PaymentQr } from './PaymentQr'
 import { getPaymentOption } from '../lib/payment-config'
 import { calculateShipping } from '../lib/shipping/classes'
@@ -78,7 +79,7 @@ export function GuestCheckout() {
   const sameDayEligible = isSameDayEligibleLocation(form.city_municipality, form.region, sameDayNearbyAreas)
   const sameDay = delivery === 'same_day_delivery'
   const shipping = delivery === 'nationwide_delivery' ? shippingQuote.fee : 0
-  const codFee = payment === 'cash_on_delivery' ? Math.ceil(subtotal * .01) : 0
+  const codFee = payment === 'cash_on_delivery' ? calculateCodServiceFee(subtotal) : 0
   const pickup = payment === 'pay_upon_pickup'
   const dueNow = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : subtotal + shipping
   const overallTotal = subtotal + shipping + codFee
@@ -306,7 +307,7 @@ export function GuestCheckout() {
           <div className="payment-methods" role="radiogroup" aria-label="Payment method">
             {paymentMethods.filter((method) => !(sameDay && method.id === 'cash_on_delivery')).map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.description}</small></span></button>)}
           </div>
-          {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><section><h3>Pay Now</h3><div><span>Shipping — {shippingQuote.shippingClass}</span><strong>{peso(shipping)}</strong></div><div><span>1% COD service fee</span><strong>{peso(codFee)}</strong></div><div className="cod-primary-amount"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div></section><section><h3>Pay Upon Delivery</h3><div><span>Merchandise subtotal</span><strong>{peso(subtotal)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div></section><section className="cod-order-value"><h3>Order Value</h3><div><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></section></div>}
+          {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><section><h3>Pay Now</h3><div><span>Shipping — {shippingQuote.shippingClass}</span><strong>{peso(shipping)}</strong></div><div><span>{codServiceFeeLabel}</span><strong>{peso(codFee)}</strong></div><div className="cod-primary-amount"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div></section><section><h3>Pay Upon Delivery</h3><div><span>Merchandise subtotal</span><strong>{peso(subtotal)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div></section><section className="cod-order-value"><h3>Order Value</h3><div><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></section></div>}
           {payment && proofNeeded && <PaymentQr method={payment} amount={dueNow} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
           {payment && proofNeeded && (qrAvailable || proof) && <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input ref={proofInputRef} required type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => void selectProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proofError && <p className="proof-error" role="alert">{proofError}</p>}{proof && previewUrl && <img src={previewUrl} alt="Payment screenshot preview" />}</div>}
           {payment === 'pay_upon_pickup' && <label className="checkout-check"><input type="checkbox" checked={reservation} onChange={(event) => setReservation(event.target.checked)} /> I understand that this is only a reservation request and I must wait for Hydro Blasters MNL to confirm before visiting.</label>}

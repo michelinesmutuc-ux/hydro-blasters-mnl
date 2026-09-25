@@ -1,0 +1,7 @@
+{
+  "name": "hydro-blasters-isolated-regressions",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node appointment-notifications.mjs && node order-notifications.mjs && node cod-postgres.mjs" },
+  "devDependencies": { "@electric-sql/pglite": "0.5.8" }
+}

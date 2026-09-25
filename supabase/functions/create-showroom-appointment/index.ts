@@ -18,11 +18,23 @@ Deno.serve(async request => {
     const { data: appointment, error } = await admin.from('showroom_appointments').insert({ customer_name: body.customer_name.trim(), mobile_number: body.mobile_number.trim(), preferred_date: body.preferred_date, preferred_time: body.preferred_time, products_of_interest: body.products_of_interest.trim(), additional_notes: body.additional_notes?.trim() || null, status: 'pending' }).select('id').single()
     if (error) throw error
 
+    let notificationFailure: string | null = null
     try {
-      const notificationResponse = await fetch(`${supabaseUrl}/functions/v1/notify-new-appointment`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ appointmentId: appointment.id }) })
-      if (!notificationResponse.ok) console.error('Appointment notification was not sent.', { appointmentId: appointment.id, status: notificationResponse.status })
-    } catch (notificationError) {
-      console.error('Appointment notification could not be invoked.', { appointmentId: appointment.id, notificationError })
+      const notificationResponse = await fetch(`${supabaseUrl}/functions/v1/notify-new-appointment`, { method: 'POST', headers: { Authorization: `Bearer ${serviceRoleKey}`, apikey: serviceRoleKey, 'Content-Type': 'application/json' }, body: JSON.stringify({ appointmentId: appointment.id }), signal: AbortSignal.timeout(12_000) })
+      if (!notificationResponse.ok) {
+        notificationFailure = `Appointment notification invocation failed (HTTP ${notificationResponse.status}).`
+        console.error('Appointment notification was not sent.', { appointmentId: appointment.id, status: notificationResponse.status })
+      }
+    } catch {
+      notificationFailure = 'Appointment notification timed out or could not be reached; delivery may be unknown.'
+      console.error('Appointment notification could not be invoked.', { appointmentId: appointment.id })
+    }
+
+    if (notificationFailure) {
+      try {
+        const { error: statusError } = await admin.from('showroom_appointments').update({ admin_notification_error: notificationFailure }).eq('id', appointment.id).is('admin_notification_sent_at', null).is('admin_notification_error', null)
+        if (statusError) console.error('Appointment notification failure status could not be saved.', { appointmentId: appointment.id })
+      } catch { console.error('Appointment notification failure status could not be saved.', { appointmentId: appointment.id }) }
     }
 
     return reply({ message: 'Appointment request received.' }, 201)

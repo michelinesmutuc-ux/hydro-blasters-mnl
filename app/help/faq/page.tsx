@@ -1,3 +1,4 @@
+import { codServiceFeeLabel } from '../../../lib/cod'
 import Link from 'next/link'
 import { HelpCenterShell } from '../../../components/HelpCenter'
 import { JsonLd } from '../../../components/JsonLd'
@@ -32,7 +33,7 @@ const sections = [
   { title: 'Orders and shipping', items: [
     ['Do you ship nationwide?', 'Yes. See the Shipping Policy for the current nationwide flat rates.'],
     ['How much is shipping?', 'Shipping is automatically calculated from the size and quantity of the items in your order. The current tiers are Compact ₱99, Medium ₱179, and Bulky ₱249.'],
-    ['How does Cash on Delivery work?', 'Nationwide shipping and the 1% COD service fee are due now. The merchandise amount is paid to the courier upon delivery.'],
+    ['How does Cash on Delivery work?', `Nationwide shipping and the ${codServiceFeeLabel} are due now. The merchandise amount is paid to the courier upon delivery.`],
     ['Why do I need to upload proof of payment?', 'It helps Hydro Blasters MNL verify required prepaid amounts before processing the order.'],
     ['How long does payment verification take?', 'Payment verification may take up to 24 hours.'],
   ] },
