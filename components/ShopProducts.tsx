@@ -9,9 +9,10 @@ import { ShopFloatingCheckout } from './ShopFloatingCheckout'
 import { GEL_BLASTER_TYPES, gelBlasterTypeFilterLabels, isGelBlasterCategory, parseGelBlasterType, type GelBlasterType } from '../lib/products/product-types'
 import { normalizeProductCategory, sortShopCategories } from '../lib/products/category-order'
 import { ShopCategoryShelf } from './ShopCategoryShelf'
+import { compareFeaturedProducts } from '../lib/products/shop-order'
 import { isNewArrival } from '../lib/products/highlights'
 
-type SortOption = 'newest' | 'price-asc' | 'price-desc' | 'name-asc'
+type SortOption = 'featured' | 'newest' | 'price-asc' | 'price-desc' | 'name-asc'
 type HighlightFilter = '' | 'new_arrival' | 'clearance_sale' | 'best_seller'
 type ShopProduct = PublicProduct & {
   created_at: string
@@ -19,6 +20,7 @@ type ShopProduct = PublicProduct & {
 }
 
 type ShopFilters = {
+  view: 'categories' | 'all'
   search: string
   category: string
   productType: GelBlasterType | ''
@@ -27,33 +29,35 @@ type ShopFilters = {
   sort: SortOption
 }
 
-const defaultShopFilters: ShopFilters = { search: '', category: '', productType: '', brand: '', highlight: '', sort: 'newest' }
+const defaultShopFilters: ShopFilters = { view: 'categories', search: '', category: '', productType: '', brand: '', highlight: '', sort: 'featured' }
 const SHOP_BATCH_SIZE = 12
 
 function filtersFromUrl(params: Pick<URLSearchParams, 'get'>): ShopFilters {
   const sort = params.get('sort')
-  const validSort: SortOption[] = ['newest', 'price-asc', 'price-desc', 'name-asc']
+  const validSort: SortOption[] = ['featured', 'newest', 'price-asc', 'price-desc', 'name-asc']
   const validHighlights: HighlightFilter[] = ['', 'new_arrival', 'clearance_sale', 'best_seller']
   const category = normalizeProductCategory(params.get('category') ?? '')
   const productType = params.get('type') ?? ''
   return {
+    view: params.get('view') === 'all' ? 'all' : 'categories',
     search: params.get('search') ?? '',
     category,
     productType: isGelBlasterCategory(category) ? parseGelBlasterType(productType) : '',
     brand: params.get('brand') ?? '',
     highlight: validHighlights.includes(params.get('highlight') as HighlightFilter) ? params.get('highlight') as HighlightFilter : '',
-    sort: validSort.includes(sort as SortOption) ? sort as SortOption : 'newest',
+    sort: validSort.includes(sort as SortOption) ? sort as SortOption : 'featured',
   }
 }
 
 function updateShopUrl(filters: ShopFilters) {
   const params = new URLSearchParams()
+  if (filters.view === 'all') params.set('view', 'all')
   if (filters.search) params.set('search', filters.search)
   if (filters.category) params.set('category', filters.category)
   if (filters.category && isGelBlasterCategory(filters.category) && filters.productType) params.set('type', filters.productType.toLocaleLowerCase())
   if (filters.brand) params.set('brand', filters.brand)
   if (filters.highlight) params.set('highlight', filters.highlight)
-  if (filters.sort !== 'newest') params.set('sort', filters.sort)
+  if (filters.sort !== 'featured') params.set('sort', filters.sort)
   const query = params.toString()
   window.history.replaceState({}, '', query ? `/shop?${query}` : '/shop')
 }
@@ -146,6 +150,7 @@ export function ShopProducts() {
     })
 
     return [...filtered].sort((first, second) => {
+      if (filters.sort === 'featured') return compareFeaturedProducts(first, second)
       if (filters.sort === 'price-asc') return Number(first.price) - Number(second.price)
       if (filters.sort === 'price-desc') return Number(second.price) - Number(first.price)
       if (filters.sort === 'name-asc') return first.name.localeCompare(second.name)
@@ -154,7 +159,7 @@ export function ShopProducts() {
     })
   }, [products, filters])
 
-  const isDefaultShelfMode = !filters.search.trim() && !filters.category && !filters.productType && !filters.brand && !filters.highlight && filters.sort === 'newest'
+  const isDefaultShelfMode = filters.view === 'categories' && !filters.search.trim() && !filters.category && !filters.productType && !filters.brand && !filters.highlight && filters.sort === 'featured'
   const visibleProducts = useMemo(() => matchingProducts.slice(0, visibleCount), [matchingProducts, visibleCount])
   const eagerImageIds = useMemo(() => new Set(visibleProducts.slice(0, 4).map((product) => product.id)), [visibleProducts])
   useEffect(() => { setVisibleCount(SHOP_BATCH_SIZE) }, [filters])
@@ -165,13 +170,13 @@ export function ShopProducts() {
     if (filters.productType) chips.push({ key: 'productType', label: filters.productType })
     if (filters.brand) chips.push({ key: 'brand', label: filters.brand })
     if (filters.highlight) chips.push({ key: 'highlight', label: filters.highlight.replaceAll('_', ' ') })
-    if (filters.sort !== 'newest') chips.push({ key: 'sort', label: `Sort: ${filters.sort.replaceAll('-', ' ')}` })
+    if (filters.sort !== 'featured') chips.push({ key: 'sort', label: `Sort: ${filters.sort.replaceAll('-', ' ')}` })
     return chips
   }, [filters])
-  const filteredResultsTitle = filters.category || (filters.search.trim() ? 'Search results' : 'Filtered products')
+  const filteredResultsTitle = filters.category || (filters.search.trim() ? 'Search results' : filters.view === 'all' ? 'All Products' : 'Filtered products')
   const categoryShelves = useMemo(() => {
     const productsByCategory = new Map<string, ShopProduct[]>()
-    for (const product of visibleProducts) {
+    for (const product of matchingProducts) {
       const current = productsByCategory.get(product.category) ?? []
       current.push(product)
       productsByCategory.set(product.category, current)
@@ -179,9 +184,10 @@ export function ShopProducts() {
 
     return sortShopCategories(Array.from(productsByCategory.keys())).map((category) => ({
       category,
-      products: productsByCategory.get(category) ?? [],
+      products: (productsByCategory.get(category) ?? []).slice(0, SHOP_BATCH_SIZE),
+      totalCount: productsByCategory.get(category)?.length ?? 0,
     }))
-  }, [visibleProducts])
+  }, [matchingProducts])
 
   function updateFilter<K extends keyof ShopFilters>(field: K, value: ShopFilters[K]) {
     setFilters((current) => ({ ...current, [field]: value }))
@@ -199,7 +205,7 @@ export function ShopProducts() {
     setFilters((current) => {
       if (field === 'category') return { ...current, category: '', productType: '' }
       if (field === 'productType') return { ...current, productType: '' }
-      if (field === 'sort') return { ...current, sort: 'newest' }
+      if (field === 'sort') return { ...current, sort: 'featured' }
       return { ...current, [field]: '' }
     })
   }
@@ -209,6 +215,10 @@ export function ShopProducts() {
   if (products.length === 0) return <div className="catalogue-state">There are no active products to display yet. Please check back soon.</div>
 
   return <div className="shop-catalogue">
+    <div className="shop-view-options" role="group" aria-label="Browse products">
+      <button className="secondary-button" type="button" aria-pressed={isDefaultShelfMode} onClick={clearAllFilters}>By Category</button>
+      <button className="secondary-button" type="button" aria-pressed={filters.view === 'all' && !filters.category && !filters.search && !filters.brand && !filters.highlight} onClick={() => setFilters({ ...defaultShopFilters, view: 'all' })}>All Products</button>
+    </div>
     <div className="shop-controls" aria-label="Product search and filters">
       <div className="shop-search"><label htmlFor="product-search">Search products</label><div><input ref={searchInput} id="product-search" type="search" value={filters.search} onChange={(event) => updateFilter('search', event.target.value)} placeholder="Search name, brand, category…" />{filters.search && <button type="button" onClick={() => updateFilter('search', '')}>Clear search</button>}</div></div>
       <div className="shop-filter-grid">
@@ -216,12 +226,12 @@ export function ShopProducts() {
         {isGelBlasterCategory(filters.category) && <label className={filters.productType ? 'shop-filter-field-active' : undefined}>Type<select value={filters.productType} onChange={(event) => updateFilter('productType', event.target.value as GelBlasterType | '')}><option value="">All</option>{GEL_BLASTER_TYPES.map((productType) => <option key={productType} value={productType}>{gelBlasterTypeFilterLabels[productType]}</option>)}</select></label>}
         <label className={filters.brand ? 'shop-filter-field-active' : undefined}>Brand<select value={filters.brand} onChange={(event) => updateFilter('brand', event.target.value)}><option value="">All brands</option>{brands.map((brand) => <option key={brand} value={brand}>{brand}</option>)}</select></label>
         <label className={filters.highlight ? 'shop-filter-field-active' : undefined}>Highlights<select value={filters.highlight} onChange={(event) => updateFilter('highlight', event.target.value as HighlightFilter)}><option value="">All highlights</option><option value="new_arrival">New Arrivals</option><option value="best_seller">Best Seller</option><option value="clearance_sale">Clearance Sale</option></select></label>
-        <label className={filters.sort !== 'newest' ? 'shop-filter-field-active' : undefined}>Sort<select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as SortOption)}><option value="newest">Newest</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="name-asc">Name: A to Z</option></select></label>
+        <label className={filters.sort !== 'featured' ? 'shop-filter-field-active' : undefined}>Sort<select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as SortOption)}><option value="featured">Featured first</option><option value="newest">Newest</option><option value="price-asc">Price: low to high</option><option value="price-desc">Price: high to low</option><option value="name-asc">Name: A to Z</option></select></label>
       </div>
       <button className="clear-filters" type="button" onClick={clearAllFilters}>Clear all filters</button>
     </div>
-    {!isDefaultShelfMode ? <section className="shop-filtered-state" aria-label="Active shop filters"><div className="shop-filtered-state-heading"><div><p className="eyebrow">Filtered products</p><h2>{filteredResultsTitle}</h2><p>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}</p></div><button type="button" onClick={clearAllFilters}>← Back to all categories</button></div>{activeFilterChips.length > 0 && <div className="shop-active-filter-chips" aria-label="Active filters">{activeFilterChips.map((chip) => <button type="button" key={chip.key} onClick={() => clearSingleFilter(chip.key)}>{chip.label} <span aria-hidden="true">×</span><span className="sr-only">Remove filter</span></button>)}</div>}</section> : <div className="shop-filter-status"><span>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}</span></div>}
-    {matchingProducts.length > 0 ? <>{isDefaultShelfMode ? <div className="shop-category-shelves">{categoryShelves.map((shelf) => <ShopCategoryShelf category={shelf.category} products={shelf.products} eagerImageIds={eagerImageIds} key={shelf.category} />)}</div> : <div className="product-grid">{visibleProducts.map((product) => <ProductCard product={product} eagerImage={eagerImageIds.has(product.id)} key={product.id} />)}</div>}{visibleCount < matchingProducts.length && <div className="product-list-more"><button className="secondary-button" type="button" onClick={() => setVisibleCount((count) => count + SHOP_BATCH_SIZE)}>Load More</button></div>}</> : <div className="catalogue-state">No active products match your current search and filters. Try clearing a filter or searching for something else.</div>}
+    {!isDefaultShelfMode ? <section className="shop-filtered-state" aria-label="Active shop filters"><div className="shop-filtered-state-heading"><div><p className="eyebrow">Product catalogue</p><h2>{filteredResultsTitle}</h2><p>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}</p></div><button type="button" onClick={clearAllFilters}>← Back to all categories</button></div>{activeFilterChips.length > 0 && <div className="shop-active-filter-chips" aria-label="Active filters">{activeFilterChips.map((chip) => <button type="button" key={chip.key} onClick={() => clearSingleFilter(chip.key)}>{chip.label} <span aria-hidden="true">×</span><span className="sr-only">Remove filter</span></button>)}</div>}</section> : <div className="shop-filter-status"><span>{matchingProducts.length} product{matchingProducts.length === 1 ? '' : 's'}</span></div>}
+    {matchingProducts.length > 0 ? <>{isDefaultShelfMode ? <div className="shop-category-shelves">{categoryShelves.map((shelf) => <ShopCategoryShelf category={shelf.category} products={shelf.products} totalCount={shelf.totalCount} eagerImageIds={eagerImageIds} key={shelf.category} />)}</div> : <div className="product-grid">{visibleProducts.map((product) => <ProductCard product={product} eagerImage={eagerImageIds.has(product.id)} key={product.id} />)}</div>}{!isDefaultShelfMode && visibleCount < matchingProducts.length && <div className="product-list-more"><button className="secondary-button" type="button" onClick={() => setVisibleCount((count) => count + SHOP_BATCH_SIZE)}>Load More</button></div>}</> : <div className="catalogue-state">No active products match your current search and filters. Try clearing a filter or searching for something else.</div>}
     <ShopFloatingCheckout />
   </div>
 }

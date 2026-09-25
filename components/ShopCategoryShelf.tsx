@@ -1,16 +1,16 @@
 'use client'
 
-import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ProductCard, type PublicProduct } from './ProductCard'
 
 type ShopCategoryShelfProps = {
   category: string
   products: PublicProduct[]
+  totalCount?: number
   eagerImageIds?: Set<string>
 }
 
-export function ShopCategoryShelf({ category, products, eagerImageIds = new Set() }: ShopCategoryShelfProps) {
+export function ShopCategoryShelf({ category, products, totalCount = products.length, eagerImageIds = new Set() }: ShopCategoryShelfProps) {
   const rowRef = useRef<HTMLDivElement>(null)
   const [canScroll, setCanScroll] = useState(false)
   const [atStart, setAtStart] = useState(true)
@@ -46,14 +46,14 @@ export function ShopCategoryShelf({ category, products, eagerImageIds = new Set(
     <header className="shop-category-shelf-header">
       <div>
         <h2 id={`shop-category-${category}`}>{category}</h2>
-        <p>{products.length} product{products.length === 1 ? '' : 's'}</p>
+        <p>{products.length < totalCount ? `${products.length} of ${totalCount}` : totalCount} product{totalCount === 1 ? '' : 's'}</p>
       </div>
       <div className="shop-category-shelf-actions">
         {canScroll && <div className="shop-shelf-scroll-controls" aria-label={`Scroll ${category} products`}>
           <button type="button" aria-label={`Show earlier ${category} products`} disabled={atStart} onClick={() => scrollShelf(-1)}>←</button>
           <button type="button" aria-label={`Show more ${category} products`} disabled={atEnd} onClick={() => scrollShelf(1)}>→</button>
         </div>}
-        <Link href={viewAllHref} aria-label={`View all ${category} products`}>View all <span aria-hidden="true">→</span></Link>
+        <a href={viewAllHref} aria-label={`View all ${category} products`}>View all <span aria-hidden="true">→</span></a>
       </div>
     </header>
     <div className="shop-category-shelf-row" ref={rowRef} onScroll={updateScrollState}>

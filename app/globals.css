@@ -134,3 +134,8 @@ footer { padding:34px 20px 42px; border-top:1px solid var(--line); }.footer-bran
 /* Keep navbar search comfortable to tap and visible to keyboard users. */
 .product-search-link { min-width:44px; min-height:44px; text-decoration:none; }
 .product-search-link:focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
+
+.shop-view-options { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+.shop-view-options button { min-height:44px; cursor:pointer; }
+.shop-view-options button[aria-pressed="true"] { border-color:var(--cyan); color:var(--cyan); }
+.shop-view-options button:focus-visible { outline:2px solid var(--cyan); outline-offset:3px; }
