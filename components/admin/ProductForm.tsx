@@ -51,6 +51,7 @@ export function ProductForm({ mode }: ProductFormProps) {
   const [newProductSlug, setNewProductSlug] = useState('')
   const [newProductSlugEdited, setNewProductSlugEdited] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [cleanupWarning, setCleanupWarning] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [existingImageUrls, setExistingImageUrls] = useState<string[]>([])
@@ -305,6 +306,7 @@ export function ProductForm({ mode }: ProductFormProps) {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
+    setCleanupWarning(null)
     const visibleSpecificationRows = specificationRowsFromSubmittedForm(event.currentTarget)
     const submittedSpecificationRows = visibleSpecificationRows.map((row) => ({ ...row }))
     const normalizedSlug = newProductSlug
@@ -442,7 +444,6 @@ export function ProductForm({ mode }: ProductFormProps) {
       const finalImageUrls = pendingPrimarySelected && uploadedImageUrls.length > 0
         ? [uploadedImageUrls[0], ...remainingExistingImageUrls, ...uploadedImageUrls.slice(1)]
         : [...remainingExistingImageUrls, ...uploadedImageUrls]
-      const removedImageUrls = loadedImageUrls.filter((url) => !remainingExistingImageUrls.includes(url))
       const updatePayload = {
         name: draft.name.trim(),
         brand: draft.brand.trim() || null,
@@ -480,20 +481,14 @@ export function ProductForm({ mode }: ProductFormProps) {
       if (savedUrls.length !== finalImageUrls.length || savedUrls.some((url, index) => url !== finalImageUrls[index])) {
         throw new Error('The product was saved, but its uploaded image URLs were not returned by Supabase. The form has not been marked as successful.')
       }
+      let currentVariantImageUrls: string[] = []
       try {
         const savedVariantRows = draft.hasVariants ? await prepareVariantImages(productId as string, variantRows) : []
         await replaceProductSpecifications(productId as string, submittedSpecificationRows)
         await replaceProductVariants(productId as string, savedVariantRows)
         await replaceProductAddons(productId as string, selectedAddonIds)
-        const currentVariantImageUrls = savedVariantRows.map((row) => row.image_url).filter((url): url is string => Boolean(url))
-        const removedVariantImageUrls = loadedVariantImageUrls.filter((url) => !currentVariantImageUrls.includes(url) && !finalImageUrls.includes(url))
-        if (removedVariantImageUrls.length > 0) {
-          try {
-            await deleteProductImages(removedVariantImageUrls)
-          } catch {
-            // The saved variant row is already correct. A later product-image cleanup can remove an unused object safely.
-          }
-        }
+        currentVariantImageUrls = savedVariantRows.map((row) => row.image_url).filter((url): url is string => Boolean(url))
+        setVariantRows(savedVariantRows)
       } catch (specificationError) {
         setExistingImageUrls(finalImageUrls)
         setLoadedImageUrls(finalImageUrls)
@@ -502,11 +497,22 @@ export function ProductForm({ mode }: ProductFormProps) {
         setError(describeSpecificationError(specificationError, true))
         return
       }
-      await deleteProductImages(removedImageUrls)
+      // The save is complete. Synchronize the form before attempting best-effort storage cleanup.
+      setExistingImageUrls(savedUrls)
+      setLoadedImageUrls(savedUrls)
+      setLoadedVariantImageUrls(currentVariantImageUrls)
+      savedDraftRef.current = { ...draft }
+      setImageFiles([])
       setPendingPrimarySelected(false)
       markWebsiteChangesUnpublished()
       window.localStorage.setItem('hydro-products-updated', JSON.stringify({ product: data, updatedAt: Date.now() }))
       window.dispatchEvent(new Event('hydro-products-updated'))
+      try {
+        await deleteProductImages([...loadedImageUrls, ...loadedVariantImageUrls], [...savedUrls, ...currentVariantImageUrls])
+      } catch (cleanupError) {
+        setCleanupWarning(`Product saved successfully. ${cleanupError instanceof Error ? cleanupError.message : 'Image cleanup failed.'}`)
+        return
+      }
       router.push('/admin/products?updated=1')
       router.refresh()
     } catch (saveError) {
@@ -546,6 +552,7 @@ export function ProductForm({ mode }: ProductFormProps) {
   return (
     <form className={styles.form} onSubmit={handleSubmit}>
       {error && <p className={styles.errorMessage} role="alert">{error}</p>}
+      {cleanupWarning && <p className={styles.errorMessage} role="alert">{cleanupWarning}</p>}
       <section className={styles.formSection}>
         <h2>Product information</h2>
         <div className={styles.fieldGrid}>

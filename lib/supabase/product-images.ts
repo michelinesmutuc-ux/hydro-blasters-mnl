@@ -1,5 +1,6 @@
 import { requireAdminSession } from '../admin/auth'
 import { productImageKeyFromUrl, PRODUCT_IMAGE_DELIVERY_ORIGIN, PRODUCT_IMAGE_MEDIA_PREFIX } from '../images/delivery'
+import { planImageCleanup } from '../images/cleanup'
 import { optimizeImage } from '../images/optimize'
 
 export { acceptedImageTypes } from '../images/optimize'
@@ -58,20 +59,29 @@ export async function uploadProductImages({ files, productId, onProgress }: Uplo
   return urls
 }
 
-export async function deleteProductImages(imageUrls: string[]) {
-  const keys = imageUrls.map(productImageKeyFromUrl).filter((key): key is string => Boolean(key))
-  if (keys.length === 0) return
-
-  const session = await requireAdminSession()
-  const response = await fetch(PRODUCT_IMAGE_ENDPOINT, {
-    method: 'DELETE',
-    headers: {
-      authorization: `Bearer ${session.access_token}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ keys }),
-  })
-  const result = await responseJson(response)
-
-  if (!response.ok) throw new Error(`The product row was updated, but its R2 images could not be removed. ${result.error || `Cleanup service returned ${response.status}.`}`)
+export async function deleteProductImages(imageUrls: unknown[], retainedImageUrls: unknown[] = []) {
+  const { keys, skipped } = planImageCleanup(imageUrls, retainedImageUrls)
+  const warnings = skipped.map((value) => `Unrecognized image reference left untouched: ${value}`)
+  if (skipped.length) console.warn('[Product image cleanup] Unrecognized references', { skipped })
+  if (keys.length) {
+    try {
+      const session = await requireAdminSession()
+      // Stay within the endpoint's batch limit without discarding later candidates.
+      for (let offset = 0; offset < keys.length; offset += 100) {
+        const batch = keys.slice(offset, offset + 100)
+        const response = await fetch(PRODUCT_IMAGE_ENDPOINT, {
+          method: 'DELETE',
+          headers: { authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ keys: batch }),
+        })
+        const result = await responseJson(response)
+        if (!response.ok) throw new Error(result.error || `Cleanup service returned ${response.status}.`)
+      }
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Cleanup request failed.'
+      console.error('[Product image cleanup] Failed', { keys, reason })
+      warnings.push(`${reason} Requested keys: ${keys.join(', ')}`)
+    }
+  }
+  if (warnings.length) throw new Error(`Storage cleanup needs attention. ${warnings.join(' ')}`)
 }

@@ -1,3 +1,5 @@
+import { isCleanupKey, referencedImageKey } from '../../../lib/images/cleanup'
+
 type R2BucketBinding = {
   put: (key: string, value: ArrayBuffer, options?: { httpMetadata?: { contentType?: string; cacheControl?: string } }) => Promise<unknown>
   delete: (keys: string | string[]) => Promise<void>
@@ -93,14 +95,6 @@ function dateStamp() {
   return `${now.getUTCFullYear()}${month}${day}`
 }
 
-function safeProductKey(value: unknown) {
-  if (typeof value !== 'string') return null
-  const key = value.trim().replace(/^\/+/, '')
-  if (!/^products\/[0-9a-f-]{36}\/image-[0-9]{8}-[0-9a-f]{8}\.(?:jpg|png|webp)$/i.test(key)) return null
-  if (key.includes('..')) return null
-  return key
-}
-
 export async function onRequestPost({ request, env }: PagesContext) {
   const auth = await requireAdmin(request, env)
   if (!auth.ok) return auth.response
@@ -146,11 +140,64 @@ export async function onRequestDelete({ request, env }: PagesContext) {
   }
 
   if (!Array.isArray(body.keys)) return json({ error: 'keys must be an array.' }, 400)
-  const keys = body.keys.map(safeProductKey).filter((key): key is string => Boolean(key))
-  if (keys.length !== body.keys.length) return json({ error: 'One or more image keys are invalid.' }, 400)
+  const invalidKeys = body.keys.filter((key) => !isCleanupKey(key))
+  if (invalidKeys.length) {
+    console.warn('[Product image cleanup] Invalid keys', { invalidKeys })
+    return json({ error: `Invalid image keys: ${invalidKeys.map((key) => JSON.stringify(key)).join(', ')}`, invalidKeys }, 400)
+  }
+  const keys = [...new Set(body.keys as string[])]
   if (keys.length === 0) return json({ deleted: 0 })
   if (keys.length > 100) return json({ error: 'No more than 100 images can be deleted in one request.' }, 400)
 
-  await env.PRODUCT_IMAGES_R2.delete(keys)
-  return json({ deleted: keys.length })
+  // Read persisted references with the verified admin's credentials, not client-supplied exclusions.
+  // Shared images in other products and variants must also survive cleanup.
+  const referenced = new Set<string>()
+  try {
+    const config = supabaseConfig(env)
+    for (const [table, columns] of [['products', 'id,image_urls'], ['product_variants', 'id,image_url']]) {
+      let offset = 0
+      while (true) {
+        const response = await fetch(`${config.url}/rest/v1/${table}?select=${columns}&order=id&limit=500&offset=${offset}`, {
+          headers: { authorization: request.headers.get('authorization')!, apikey: config.key },
+        })
+        if (!response.ok) throw new Error(`Could not check ${table} references (HTTP ${response.status}).`)
+        const rows = await response.json() as { image_urls?: unknown[]; image_url?: unknown }[]
+        if (!Array.isArray(rows)) throw new Error(`Invalid ${table} reference response.`)
+        if (rows.length === 0) break
+        for (const row of rows) {
+          const values = table === 'products' ? row.image_urls : [row.image_url]
+          if (table === 'products' ? row.image_urls === undefined : row.image_url === undefined) {
+            throw new Error(`Missing ${table} image references.`)
+          }
+          if (values != null && !Array.isArray(values)) throw new Error(`Invalid ${table} image references.`)
+          for (const value of values ?? []) {
+            const key = referencedImageKey(value)
+            if (key) referenced.add(key)
+          }
+        }
+        offset += rows.length
+      }
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'Reference check failed.'
+    console.error('[Product image cleanup] Reference check failed; nothing deleted', { keys, reason })
+    return json({ error: `${reason} No images were deleted.`, keys }, 503)
+  }
+
+  const deletedKeys: string[] = []
+  const retainedKeys = keys.filter((key) => referenced.has(key))
+  const failedKeys: string[] = []
+  for (const key of keys) {
+    if (referenced.has(key)) continue
+    try {
+      await env.PRODUCT_IMAGES_R2.delete(key)
+      deletedKeys.push(key)
+    } catch (error) {
+      failedKeys.push(key)
+      console.error('[Product image cleanup] R2 delete failed', { key, error: error instanceof Error ? error.message : String(error) })
+    }
+  }
+  return json({ deleted: deletedKeys.length, deletedKeys, retainedKeys, failedKeys,
+    ...(failedKeys.length ? { error: `Could not delete R2 image keys: ${failedKeys.join(', ')}` } : {}),
+  }, failedKeys.length ? 502 : 200)
 }
