@@ -49,7 +49,6 @@ export function GuestCheckout() {
   const [technicalFailure, setTechnicalFailure] = useState(false)
   const [qrAvailable, setQrAvailable] = useState(true)
   const orderAttemptKey = useRef<string | null>(null)
-  const layawayAccessCodeRef = useRef<string | null>(null)
   const diagnosticAttemptId = useRef<string | null>(null)
   const proofInputRef = useRef<HTMLInputElement | null>(null)
   const paymentSectionRef = useRef<HTMLElement | null>(null)
@@ -236,25 +235,6 @@ export function GuestCheckout() {
     try { sessionStorage.setItem('hydro-order-attempt-key', nextKey) } catch { /* The ref still preserves retries on this page. */ }
     return nextKey
   }
-  const getLayawayAccessCode = () => {
-    if (layawayAccessCodeRef.current) return layawayAccessCodeRef.current
-    const key = `hydro-layaway-access-code-${getOrderAttemptKey()}`
-    try {
-      const saved = sessionStorage.getItem(key)
-      if (saved) return layawayAccessCodeRef.current = saved
-      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-      const bytes = crypto.getRandomValues(new Uint8Array(12))
-      const characters = [...bytes].map((byte) => alphabet[byte & 31]).join('')
-      const created = `LYW-${characters.slice(0, 4)}-${characters.slice(4, 8)}-${characters.slice(8, 12)}`
-      sessionStorage.setItem(key, created)
-      return layawayAccessCodeRef.current = created
-    } catch {
-      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-      const bytes = crypto.getRandomValues(new Uint8Array(12))
-      const characters = [...bytes].map((byte) => alphabet[byte & 31]).join('')
-      return layawayAccessCodeRef.current = `LYW-${characters.slice(0, 4)}-${characters.slice(4, 8)}-${characters.slice(8, 12)}`
-    }
-  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -289,7 +269,6 @@ export function GuestCheckout() {
         logCheckoutDiagnostic({ attemptId, eventCode: 'file_read_completed', phase: 'proof_processing', mimeCategory: proofMimeCategory(proofContentType), sizeBucket: proofSizeBucket(proof.size) })
       }
       logCheckoutDiagnostic({ attemptId, eventCode: 'edge_invoke_started', phase: 'submission' })
-      const layawayAccessCode = payment === 'layaway' ? getLayawayAccessCode() : undefined
       const data = await invokeGuestOrder({
           ...form,
           customer_name: customerName,
@@ -297,16 +276,14 @@ export function GuestCheckout() {
           same_day_acknowledged: sameDayAcknowledged,
           payment_method: payment,
           layaway_terms_accepted: payment === 'layaway' ? layawayTermsAccepted : undefined,
-          layaway_access_code: layawayAccessCode,
           payment_option_name: getPaymentOption(paymentProofMethod ?? '', bankOptionId)?.name ?? null,
           items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })),
           idempotency_key: getOrderAttemptKey(),
           payment_proof: paymentProof,
       }, controller.signal)
       logCheckoutDiagnostic({ attemptId, eventCode: 'edge_invoke_completed', phase: 'submission' })
-      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, layaway_access_code: data.layaway_access_code ?? layawayAccessCode, customer_name: customerName, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, variant_group_name: line.variant_group_name, variant_name: line.variant_name, quantity: line.quantity, line_total: Number(line.price) * line.quantity, is_clearance: line.is_clearance ?? false })) }))
+      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, layaway_access_code: data.layaway_access_code, customer_name: customerName, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, variant_group_name: line.variant_group_name, variant_name: line.variant_name, quantity: line.quantity, line_total: Number(line.price) * line.quantity, is_clearance: line.is_clearance ?? false })) }))
       sessionStorage.removeItem('hydro-order-attempt-key')
-      if (payment === 'layaway') try { sessionStorage.removeItem(`hydro-layaway-access-code-${getOrderAttemptKey()}`) } catch { /* The confirmation still carries the code. */ }
       clear()
       router.push('/order-confirmation')
     } catch (caught) {
@@ -377,7 +354,7 @@ export function GuestCheckout() {
           {payment && proofNeeded && (qrAvailable || proof) && <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input ref={proofInputRef} required type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => void selectProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proofError && <p className="proof-error" role="alert">{proofError}</p>}{proof && previewUrl && <img src={previewUrl} alt="Payment screenshot preview" />}</div>}
           {payment === 'pay_upon_pickup' && <label className="checkout-check"><input type="checkbox" checked={reservation} onChange={(event) => setReservation(event.target.checked)} /> I understand that this is only a reservation request and I must wait for Hydro Blasters MNL to confirm before visiting.</label>}
           {payment === 'cash_on_delivery' && <label className="checkout-check"><input type="checkbox" checked={codConfirm} onChange={(event) => setCodConfirm(event.target.checked)} /> I understand that the shipping fee and COD service fee are due now, while the merchandise amount will be paid to the courier upon delivery.</label>}
-          {payment === 'layaway' && <aside className="same-day-card"><strong>LAYAWAY TERMS</strong><p>• 30% down payment to start.<br />• Remaining balance is payable in 3 monthly installments.<br />• 1–7 days late: 5% late fee.<br />• 8+ days late: 10% late fee.<br />• All currently due payments and late fees must be paid together. Partial catch-up payments are not allowed.</p><div className="layaway-forfeiture-warning"><strong>2 consecutive missed payments will cancel the Layaway and forfeit the reserved unit.</strong><b>NO REFUND WILL BE ISSUED.</b></div><p>• Early full payment is allowed with no penalty.<br />• Shipping is added to the final payment. The unit is released only after full payment.</p><label className="checkout-check"><input type="checkbox" checked={layawayTermsAccepted} onChange={(event) => setLayawayTermsAccepted(event.target.checked)} /> I have read and agree to the Layaway Terms.</label></aside>}
+          {payment === 'layaway' && <aside className="same-day-card"><strong>LAYAWAY TERMS</strong><p>• 30% down payment to start.<br />• Remaining balance is payable in 3 monthly installments.<br />• 1–7 days late: 5% late fee.<br />• 8+ days late: 10% late fee.<br />• All currently due payments and late fees must be paid together. Partial catch-up payments are not allowed.</p><div className="layaway-forfeiture-warning"><strong>2 consecutive missed payments will cancel the Layaway and forfeit the reserved unit. If the final installment remains unpaid for 1 month after its due date, the same cancellation and forfeiture rule applies.</strong><b>NO REFUND WILL BE ISSUED.</b></div><p>• Early full payment is allowed with no penalty.<br />• Shipping is added to the final payment. The unit is released only after full payment.</p><label className="checkout-check"><input type="checkbox" checked={layawayTermsAccepted} onChange={(event) => setLayawayTermsAccepted(event.target.checked)} /> I have read and agree to the Layaway Terms.</label></aside>}
         </section>
         <section className="checkout-final-cta"><p className="eyebrow">Ready to submit your order?</p><SummarySubmit /></section>
       </div>

@@ -21,7 +21,7 @@ export function LayawayTracking({ orderReference }: { orderReference: string }) 
     const response = await fetch(`${supabaseUrl}/functions/v1/${path}`, { method: 'POST', headers: { apikey: supabasePublishableKey, Authorization: `Bearer ${supabasePublishableKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     return { response, data: await response.json().catch(() => ({})) }
   }
-  const validAccessCode = /^LYW-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(code) || /^[A-Za-z0-9_-]{32,}$/.test(code)
+  const validAccessCode = /^LYW-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(code)
   async function load(event: FormEvent) {
     event.preventDefault()
     if (!validAccessCode) return setError('Enter a valid Layaway access code.')

@@ -4,7 +4,7 @@ const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Head
 const reply = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), { status, headers })
 const reference = (value: unknown) => typeof value === 'string' ? value.trim().replace(/^#\s*/, '').toUpperCase() : ''
 const code = (value: unknown) => typeof value === 'string' ? value.trim() : ''
-const validAccessCode = (value: string) => /^LYW-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(value) || /^[A-Za-z0-9_-]{32,}$/.test(value)
+const validAccessCode = (value: string) => /^LYW-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(value)
 async function sha256(value: string) { const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)); return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('') }
 function equalHash(first: string, second: string) { if (first.length !== second.length) return false; let difference = 0; for (let index = 0; index < first.length; index += 1) difference |= first.charCodeAt(index) ^ second.charCodeAt(index); return difference === 0 }
 

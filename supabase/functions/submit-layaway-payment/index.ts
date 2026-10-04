@@ -6,7 +6,7 @@ const allowedProofTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : ''
 const orderReference = (value: unknown) => text(value).replace(/^#\s*/, '').toUpperCase()
-const validAccessCode = (value: string) => /^LYW-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(value) || /^[A-Za-z0-9_-]{32,}$/.test(value)
+const validAccessCode = (value: string) => /^LYW-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(value)
 
 async function sha256(value: string) {
   const bytes = new TextEncoder().encode(value)

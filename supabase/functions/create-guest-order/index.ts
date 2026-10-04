@@ -40,7 +40,7 @@ Deno.serve(async (request) => {
     const admin = createClient(url, serviceKey)
     const isLayaway = body.payment_method === 'layaway'
     if (isLayaway && body.layaway_terms_accepted !== true) return reply({ error: 'Layaway terms must be accepted before a layaway order can be created.' }, 400)
-    let layawayAccessCode: string | null = typeof body.layaway_access_code === 'string' && /^LYW-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(body.layaway_access_code.trim()) ? body.layaway_access_code.trim() : null
+    let layawayAccessCode: string | null = null
     const proofRequired = !((body.delivery_method === 'showroom_pickup') && body.payment_method === 'pay_upon_pickup')
     if (body.delivery_method === 'same_day_delivery' && body.payment_method === 'cash_on_delivery') return reply({ error: 'Cash on Delivery is not available for Same-Day / On-Demand Delivery.' }, 400)
     if (body.delivery_method === 'same_day_delivery' && !body.same_day_acknowledged) return reply({ error: 'Confirm that you will wait for the Ready for Rider confirmation.' }, 400)

@@ -11,6 +11,7 @@ await db.exec('alter table public.orders add primary key (id)')
 try {
   await db.exec(readFileSync(new URL('../supabase/migrations/20261004000000_add_layaway_payment_foundation.sql', import.meta.url), 'utf8'))
   await db.exec(readFileSync(new URL('../supabase/migrations/20261004010000_fix_layaway_payment_proof_path.sql', import.meta.url), 'utf8'))
+  await db.exec(readFileSync(new URL('../supabase/migrations/20261004020000_cancel_overdue_final_layaway_installment.sql', import.meta.url), 'utf8'))
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)
   process.exit(1)
@@ -65,6 +66,21 @@ await db.query(`update order_payments set payment_status='verified', amount_paid
 await db.query(`update order_payments set due_date=current_date-8, payment_status='due' where order_id=$1 and installment_number=1`, [late.id])
 const lateDue = (await db.query('select * from prepare_layaway_payment($1,$2,false)', [late.id, randomUUID()])).rows[0]
 assert.equal(Number(lateDue.total_due), 2053.34)
+
+const finalLate = await createLayaway()
+await db.query(`update order_payments set payment_status='verified', amount_paid=amount_due, verified_at='2026-10-04T08:00:00+08' where order_id=$1 and payment_kind='down_payment'`, [finalLate.id])
+await db.query(`update order_payments set payment_status='verified', amount_paid=amount_due where order_id=$1 and installment_number in (1,2)`, [finalLate.id])
+await db.query(`update order_payments set due_date=current_date-2, payment_status='due' where order_id=$1 and installment_number=3`, [finalLate.id])
+const finalFivePercent = (await db.query('select * from prepare_layaway_payment($1,$2,false)', [finalLate.id, randomUUID()])).rows[0]
+assert.equal(Number(finalFivePercent.total_due), 2138.99)
+
+const finalMonth = await createLayaway()
+await db.query(`update order_payments set payment_status='verified', amount_paid=amount_due, verified_at='2026-10-04T08:00:00+08' where order_id=$1 and payment_kind='down_payment'`, [finalMonth.id])
+await db.query(`update order_payments set payment_status='verified', amount_paid=amount_due where order_id=$1 and installment_number in (1,2)`, [finalMonth.id])
+await db.query(`update order_payments set due_date=current_date - interval '1 month' + interval '1 day', payment_status='due' where order_id=$1 and installment_number=3`, [finalMonth.id])
+assert.notEqual((await db.query('select refresh_layaway_status($1)', [finalMonth.id])).rows[0].refresh_layaway_status, 'cancelled')
+await db.query(`update order_payments set due_date=current_date - interval '1 month', payment_status='due' where order_id=$1 and installment_number=3`, [finalMonth.id])
+assert.equal((await db.query('select refresh_layaway_status($1)', [finalMonth.id])).rows[0].refresh_layaway_status, 'cancelled')
 
 const third = await createLayaway()
 await db.query(`update order_payments set payment_status='verified', amount_paid=amount_due, verified_at='2026-10-04T08:00:00+08' where order_id=$1`, [third.id])
