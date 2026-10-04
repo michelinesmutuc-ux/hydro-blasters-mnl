@@ -13,8 +13,10 @@ type Order = {
   delivery_method: string; same_day_processing: string | null; payment_method: string; selected_payment_option_name: string | null
   merchandise_subtotal: number | string; shipping_fee: number | string; shipping_tier: string | null; cod_service_fee: number | string; upfront_amount: number | string; rider_collectible_amount: number | string; showroom_payable_amount: number | string; overall_total: number | string; promo_name: string | null; promo_discount: number | string
   payment_status: string; order_status: string; courier: string | null; tracking_number: string | null; payment_proof_path: string | null; created_at: string
+  layaway_status?: string; layaway_price?: number | string | null
 }
 type Item = { product_name: string; variant_group_name: string | null; variant_name: string | null; quantity: number; line_total: number | string }
+type LayawayPayment = { id: string; payment_batch_id: string | null; payment_kind: string; installment_number: number | null; merchandise_amount: number | string; shipping_amount: number | string; late_fee_amount: number | string; amount_due: number | string; amount_paid: number | string; due_date: string | null; payment_status: string; payment_proof_path: string | null }
 
 const peso = (value: number | string) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value))
 const readable = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
@@ -24,6 +26,7 @@ const deliveryLabel = (value: string) => value === 'showroom_pickup' ? 'Showroom
 export function OrderDetails({ orderId }: { orderId: string }) {
   const [order, setOrder] = useState<Order | null>(null)
   const [items, setItems] = useState<Item[]>([])
+  const [layawayPayments, setLayawayPayments] = useState<LayawayPayment[]>([])
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
   const [courier, setCourier] = useState('SPX Express')
@@ -33,11 +36,16 @@ export function OrderDetails({ orderId }: { orderId: string }) {
     setError(null)
     try {
       await requireAdminSession()
-      const { data, error: orderError } = await supabase.from('orders').select('id,order_reference,customer_name,mobile_number,house_unit,street,barangay,city_municipality,region,postal_code,order_notes,delivery_method,same_day_processing,payment_method,selected_payment_option_name,merchandise_subtotal,shipping_fee,shipping_tier,cod_service_fee,upfront_amount,rider_collectible_amount,showroom_payable_amount,overall_total,promo_name,promo_discount,payment_status,order_status,courier,tracking_number,payment_proof_path,created_at').eq('id', orderId).single()
+      const { data, error: orderError } = await supabase.from('orders').select('id,order_reference,customer_name,mobile_number,house_unit,street,barangay,city_municipality,region,postal_code,order_notes,delivery_method,same_day_processing,payment_method,selected_payment_option_name,merchandise_subtotal,shipping_fee,shipping_tier,cod_service_fee,upfront_amount,rider_collectible_amount,showroom_payable_amount,overall_total,promo_name,promo_discount,payment_status,order_status,courier,tracking_number,payment_proof_path,created_at,layaway_status,layaway_price').eq('id', orderId).single()
       if (orderError || !data) throw orderError ?? new Error('Order not found.')
       const { data: itemData, error: itemError } = await supabase.from('order_items').select('product_name,variant_group_name,variant_name,quantity,line_total').eq('order_id', orderId)
       if (itemError) throw itemError
       const loaded = data as Order
+      if (loaded.payment_method === 'layaway') {
+        const { data: payments, error: paymentError } = await supabase.from('order_payments').select('id,payment_batch_id,payment_kind,installment_number,merchandise_amount,shipping_amount,late_fee_amount,amount_due,amount_paid,due_date,payment_status,payment_proof_path').eq('order_id', orderId).order('installment_number', { ascending: true, nullsFirst: true })
+        if (paymentError) throw paymentError
+        setLayawayPayments((payments ?? []) as LayawayPayment[])
+      } else setLayawayPayments([])
       setOrder(loaded)
       setCourier(loaded.courier || 'SPX Express')
       setTrackingNumber(loaded.tracking_number || '')
@@ -82,6 +90,23 @@ export function OrderDetails({ orderId }: { orderId: string }) {
     if (proofError || !data?.signedUrl) return setError(proofError?.message ?? 'Payment proof could not be opened.')
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
+  async function viewLayawayProof(path: string | null) {
+    if (!path) return setError('No payment proof was saved for this installment.')
+    const { data, error: proofError } = await supabase.storage.from('payment-proofs').createSignedUrl(path, 60)
+    if (proofError || !data?.signedUrl) return setError(proofError?.message ?? 'Payment proof could not be opened.')
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+  async function verifyLayawayPayment(payment: LayawayPayment, verified: boolean) {
+    if (!order) return
+    try {
+      await requireAdminSession()
+      if (!payment.payment_batch_id) throw new Error('This payment has no verification batch.')
+      const { error: verifyError } = await supabase.rpc('verify_layaway_payment_batch', { p_order_id: order.id, p_attempt: payment.payment_batch_id, p_verified: verified })
+      if (verifyError) throw verifyError
+      setFeedback(verified ? 'Layaway payment verified.' : 'Layaway payment rejected.')
+      await load()
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Layaway payment could not be updated.') }
+  }
 
   if (error && !order) return <p className={styles.errorMessage} role="alert">{error}</p>
   if (!order) return <p className={styles.emptyState} role="status">Loading order details…</p>
@@ -95,10 +120,11 @@ export function OrderDetails({ orderId }: { orderId: string }) {
     <div className={styles.orderDetailsGrid}>
       <section className={styles.orderDetailCard}><h2>Order</h2><dl><div><dt>Order number</dt><dd>{order.order_reference}</dd></div><div><dt>Order status</dt><dd>{statusLabel(order.order_status)}</dd></div></dl></section>
       <section className={styles.orderDetailCard}><h2>Customer</h2><dl><div><dt>Full name</dt><dd>{order.customer_name}</dd></div><div><dt>Contact number</dt><dd>{order.mobile_number}</dd></div></dl></section>
-      <section className={styles.orderDetailCard}><h2>Payment</h2><dl><div><dt>Method</dt><dd>{readable(order.payment_method)}{order.selected_payment_option_name ? ` (${order.selected_payment_option_name})` : ''}</dd></div><div><dt>Payment status</dt><dd><select value={order.payment_status} onChange={(event) => void update('payment_status', event.target.value)}><option value="pending_verification">Pending verification</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select></dd></div></dl>{order.payment_proof_path && <button className={styles.copyAddressAction} type="button" onClick={() => void viewProof()}>View Payment Proof</button>}</section>
+      <section className={styles.orderDetailCard}><h2>Payment</h2><dl><div><dt>Method</dt><dd>{readable(order.payment_method)}{order.selected_payment_option_name ? ` (${order.selected_payment_option_name})` : ''}</dd></div><div><dt>Payment status</dt><dd>{order.payment_method === 'layaway' ? readable(order.layaway_status || order.payment_status) : <select value={order.payment_status} onChange={(event) => void update('payment_status', event.target.value)}><option value="pending_verification">Pending verification</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select>}</dd></div></dl>{order.payment_proof_path && <button className={styles.copyAddressAction} type="button" onClick={() => void viewProof()}>View Payment Proof</button>}</section>
       <section className={styles.orderDetailCard}><h2>Fulfillment</h2><dl><div><dt>Delivery method</dt><dd>{deliveryLabel(order.delivery_method)}</dd></div><div><dt>Order status</dt><dd><select value={order.order_status} onChange={(event) => void update('order_status', event.target.value)}><option value="pending">Order Received</option><option value="preparing">Preparing</option><option value="packed">Packed</option><option value="shipped">Shipped</option>{order.delivery_method === 'same_day_delivery' && <option value="ready_for_rider">Ready for Rider</option>}<option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></dd></div></dl>{isPickup ? <p>Showroom pickup — no delivery address was requested.</p> : <><h3>Complete shipping address</h3><address>{addressLines.map((line) => <span key={line}>{line}</span>)}{addressLines.length === 0 && <span>No address details were saved for this older order.</span>}</address>{order.order_notes && <p><strong>Delivery notes:</strong> {order.order_notes}</p>}<button className={styles.copyAddressAction} type="button" onClick={() => void copyShippingDetails()}>Copy Shipping Details</button></>}</section>
       {!isPickup && <section className={styles.orderDetailCard}><h2>Courier tracking</h2><label>Courier<input value={courier} onChange={(event) => setCourier(event.target.value)} placeholder="SPX Express" /></label><label>Tracking number<input value={trackingNumber} onChange={(event) => setTrackingNumber(event.target.value)} placeholder="SPX tracking number" /></label><button className={styles.copyAddressAction} type="button" onClick={() => void saveTracking()}>Save Tracking Details</button>{order.tracking_number && <p><strong>Current:</strong> {order.courier || 'Courier'} · {order.tracking_number}</p>}</section>}
     </div>
+    {order.payment_method === 'layaway' && <section className={styles.orderDetailCard}><h2>Layaway payments</h2><p>Plan status: <strong>{readable(order.layaway_status || 'awaiting_down_payment')}</strong> · Layaway price: <strong>{peso(order.layaway_price || 0)}</strong></p>{layawayPayments.map((payment) => <div className={styles.orderItemsList} key={payment.id}><div><span><strong>{payment.payment_kind === 'down_payment' ? 'Down payment' : `Installment ${payment.installment_number}`}</strong><small>Due: {payment.due_date || '—'} · {readable(payment.payment_status)}</small><small>Late fee: {peso(payment.late_fee_amount)}</small></span><b>{peso(payment.amount_due)}</b></div>{payment.payment_status === 'pending_verification' && <p>{payment.payment_proof_path && <button className={styles.copyAddressAction} type="button" onClick={() => void viewLayawayProof(payment.payment_proof_path)}>View Payment Proof</button>} <button className={styles.copyAddressAction} type="button" onClick={() => void verifyLayawayPayment(payment, true)}>Verify payment</button> <button className={styles.copyAddressAction} type="button" onClick={() => void verifyLayawayPayment(payment, false)}>Reject payment</button></p>}</div>)}</section>}
     <section className={styles.orderDetailCard}><h2>Items ordered</h2><div className={styles.orderItemsList}>{items.map((item, index) => <div key={`${item.product_name}-${index}`}><span><strong>{item.product_name}</strong>{item.variant_name && <small>{item.variant_group_name || 'Option'}: {item.variant_name}</small>}<small>Quantity: {item.quantity}</small></span><b>{peso(item.line_total)}</b></div>)}{items.length === 0 && <p>Item details are unavailable for this older order.</p>}</div></section>
     <section className={styles.orderDetailCard}><h2>Totals</h2><dl className={styles.orderTotals}><div><dt>Merchandise subtotal</dt><dd>{peso(order.merchandise_subtotal)}</dd></div>{Number(order.promo_discount) > 0 && <div><dt>{order.promo_name || 'Launch Promo'} discount</dt><dd>−{peso(order.promo_discount)}</dd></div>}<div><dt>Shipping{order.shipping_tier ? ` — ${order.shipping_tier}` : ''}</dt><dd>{peso(order.shipping_fee)}</dd></div>{Number(order.cod_service_fee) > 0 && <div><dt>COD fee</dt><dd>{peso(order.cod_service_fee)}</dd></div>}<div><dt>Amount due now</dt><dd>{peso(order.upfront_amount)}</dd></div>{riderAmount > 0 && <div><dt>{isPickup ? 'Amount due at showroom' : 'Amount due to rider'}</dt><dd>{peso(riderAmount)}</dd></div>}<div><dt>Overall total</dt><dd>{peso(order.overall_total)}</dd></div></dl></section>
   </div>

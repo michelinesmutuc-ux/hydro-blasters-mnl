@@ -2,6 +2,14 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Content-Type': 'application/json' }
 const reply = (body: Record<string, unknown>, status = 200) => new Response(JSON.stringify(body), { status, headers })
+const sha256 = async (value: string) => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+const createLayawayAccessCode = () => {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  return btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')
+}
 
 async function triggerOrderNotification(admin: ReturnType<typeof createClient>, url: string, serviceKey: string, order: { order_id: string; order_reference: string }) {
   try {
@@ -28,6 +36,9 @@ Deno.serve(async (request) => {
     const body = await request.json()
     const url = Deno.env.get('SUPABASE_URL')!, serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const admin = createClient(url, serviceKey)
+    const isLayaway = body.payment_method === 'layaway'
+    if (isLayaway && body.layaway_terms_accepted !== true) return reply({ error: 'Layaway terms must be accepted before a layaway order can be created.' }, 400)
+    let layawayAccessCode: string | null = typeof body.layaway_access_code === 'string' && body.layaway_access_code.trim().length >= 32 ? body.layaway_access_code.trim() : null
     const proofRequired = !((body.delivery_method === 'showroom_pickup') && body.payment_method === 'pay_upon_pickup')
     if (body.delivery_method === 'same_day_delivery' && body.payment_method === 'cash_on_delivery') return reply({ error: 'Cash on Delivery is not available for Same-Day / On-Demand Delivery.' }, 400)
     if (body.delivery_method === 'same_day_delivery' && !body.same_day_acknowledged) return reply({ error: 'Confirm that you will wait for the Ready for Rider confirmation.' }, 400)
@@ -57,14 +68,38 @@ Deno.serve(async (request) => {
     }
 
     const order = data[0]
-    const { data: savedOrder, error: savedOrderError } = await admin.from('orders').select('payment_proof_path,shipping_tier').eq('id', order.order_id).single()
+    const { data: savedOrder, error: savedOrderError } = await admin.from('orders').select('payment_proof_path,shipping_tier,layaway_status').eq('id', order.order_id).single()
     if (savedOrderError || !savedOrder) {
       if (temporaryProofPath) await admin.storage.from('payment-proofs').remove([temporaryProofPath])
       return reply({ error: 'Order could not be finalized. Please try again.' }, 500)
     }
 
+    if (isLayaway && savedOrder.layaway_status === 'not_applicable') {
+      layawayAccessCode ||= createLayawayAccessCode()
+      const { error: layawayError } = await admin.rpc('initialize_layaway_order', {
+        p_order_id: order.order_id,
+        p_access_token_hash: await sha256(layawayAccessCode!),
+        p_terms_accepted_at: new Date().toISOString(),
+      })
+      if (layawayError) {
+        if (temporaryProofPath) await admin.storage.from('payment-proofs').remove([temporaryProofPath])
+        await admin.from('orders').delete().eq('id', order.order_id)
+        return reply({ error: 'Layaway order could not be initialized. Please try again.' }, 500)
+      }
+    }
+
     if (proofRequired && !savedOrder.payment_proof_path) {
-      const finalProofPath = `orders/${order.order_reference}/${proofFileId}.${extension}`
+      const finalProofPath = isLayaway
+        ? `orders/${order.order_reference}/layaway/${proofFileId}.${extension}`
+        : `orders/${order.order_reference}/${proofFileId}.${extension}`
+      if (isLayaway) {
+        const { data: prepared, error: prepareError } = await admin.rpc('prepare_layaway_payment', { p_order_id: order.order_id, p_attempt: proofFileId, p_pay_all: false })
+        if (prepareError || !prepared?.[0] || prepared[0].payment_batch_id !== proofFileId) {
+          if (temporaryProofPath) await admin.storage.from('payment-proofs').remove([temporaryProofPath])
+          await admin.from('orders').delete().eq('id', order.order_id)
+          return reply({ error: prepareError?.message ?? 'Layaway payment could not be prepared.' }, 400)
+        }
+      }
       const { error: moveError } = await admin.storage.from('payment-proofs').move(temporaryProofPath!, finalProofPath)
       if (moveError) {
         await admin.storage.from('payment-proofs').remove([temporaryProofPath!])
@@ -83,12 +118,22 @@ Deno.serve(async (request) => {
         await admin.from('orders').delete().eq('id', order.order_id)
         return reply({ error: 'Order could not be finalized. Please try again.' }, 500)
       }
+      if (isLayaway) {
+        const { error: attachError } = await admin.rpc('attach_layaway_payment_proof', { p_order_id: order.order_id, p_attempt: proofFileId, p_proof_path: finalProofPath })
+        if (attachError) {
+          await admin.storage.from('payment-proofs').remove([finalProofPath])
+          await admin.from('orders').delete().eq('id', order.order_id)
+          return reply({ error: 'Layaway payment proof could not be finalized. Please try again.' }, 500)
+        }
+      }
     } else if (temporaryProofPath) {
       await admin.storage.from('payment-proofs').remove([temporaryProofPath])
     }
 
     EdgeRuntime.waitUntil(triggerOrderNotification(admin, url, serviceKey, order))
 
-    return reply({ order: { ...order, payment_status: 'pending_verification', shipping_tier: savedOrder.shipping_tier } }, 201)
+    const { data: finalOrder, error: finalOrderError } = await admin.from('orders').select('id,order_reference,merchandise_subtotal,shipping_fee,shipping_tier,cod_service_fee,upfront_amount,rider_collectible_amount,overall_total,payment_status,order_status,payment_method,delivery_method,layaway_price,layaway_status').eq('id', order.order_id).single()
+    if (finalOrderError || !finalOrder) return reply({ error: 'Order was created but could not be finalized. Please contact Hydro Blasters MNL.' }, 500)
+    return reply({ order: finalOrder, ...(layawayAccessCode ? { layaway_access_code: layawayAccessCode } : {}) }, 201)
   } catch { return reply({ error: 'Checkout could not be completed. Please try again.' }, 500) }
 })

@@ -15,3 +15,12 @@ verify_jwt = true
 
 [functions.track-order]
 verify_jwt = false
+
+[functions.submit-layaway-payment]
+verify_jwt = false
+
+[functions.get-layaway-order]
+verify_jwt = false
+
+[functions.quote-layaway]
+verify_jwt = false

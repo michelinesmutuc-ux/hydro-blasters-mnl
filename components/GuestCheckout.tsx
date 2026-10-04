@@ -13,13 +13,14 @@ import { CheckoutTimeoutError, createAnonymousAttemptId, detectSupportedProofTyp
 
 const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 const initial = { first_name: '', last_name: '', mobile_number: '', house_unit: '', street: '', barangay: '', city_municipality: '', region: '', postal_code: '', order_notes: '' }
-type PaymentMethod = 'gcash' | 'bank_transfer' | 'cash_on_delivery' | 'pay_upon_pickup'
+type PaymentMethod = 'gcash' | 'bank_transfer' | 'cash_on_delivery' | 'pay_upon_pickup' | 'layaway'
 
 const paymentMethods: { id: PaymentMethod; name: string; description: string }[] = [
   { id: 'gcash', name: 'GCash', description: 'Pay instantly using the GCash QR.' },
   { id: 'bank_transfer', name: 'Bank Transfer', description: 'Transfer using your preferred bank.' },
   { id: 'cash_on_delivery', name: 'Cash on Delivery', description: 'Pay the merchandise amount upon delivery. Shipping and COD fees are due now.' },
   { id: 'pay_upon_pickup', name: 'Showroom Pickup', description: 'Reserve online and pay according to the selected pickup payment option.' },
+  { id: 'layaway', name: 'Layaway', description: 'Pay 30% today, then complete three monthly installments.' },
 ]
 const maximumProofSize = 5 * 1024 * 1024
 
@@ -36,6 +37,8 @@ export function GuestCheckout() {
   const [reservation, setReservation] = useState(false)
   const [codConfirm, setCodConfirm] = useState(false)
   const [sameDayAcknowledged, setSameDayAcknowledged] = useState(false)
+  const [layawayTermsAccepted, setLayawayTermsAccepted] = useState(false)
+  const [layawayQuote, setLayawayQuote] = useState<{ merchandise_price: number; shipping_fee: number; layaway_price: number; down_payment: number; remaining_balance: number; installment_one: number; installment_two: number; installment_three: number; eligible: boolean } | null>(null)
   const [sameDayNearbyAreas, setSameDayNearbyAreas] = useState<SameDayNearbyArea[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -43,6 +46,7 @@ export function GuestCheckout() {
   const [technicalFailure, setTechnicalFailure] = useState(false)
   const [qrAvailable, setQrAvailable] = useState(true)
   const orderAttemptKey = useRef<string | null>(null)
+  const layawayAccessCodeRef = useRef<string | null>(null)
   const diagnosticAttemptId = useRef<string | null>(null)
   const proofInputRef = useRef<HTMLInputElement | null>(null)
   const paymentSectionRef = useRef<HTMLElement | null>(null)
@@ -74,6 +78,11 @@ export function GuestCheckout() {
       setSameDayAcknowledged(false)
     }
   }, [delivery, form.city_municipality, form.region, sameDayNearbyAreas])
+  useEffect(() => {
+    let active = true
+    void supabase.functions.invoke('quote-layaway', { body: { items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })), delivery_method: delivery } }).then(({ data }) => { if (active) setLayawayQuote(data?.quote ?? null) })
+    return () => { active = false }
+  }, [lines, delivery])
 
   const shippingQuote = calculateShipping(lines)
   const sameDayEligible = isSameDayEligibleLocation(form.city_municipality, form.region, sameDayNearbyAreas)
@@ -81,7 +90,14 @@ export function GuestCheckout() {
   const shipping = delivery === 'nationwide_delivery' ? shippingQuote.fee : 0
   const codFee = payment === 'cash_on_delivery' ? calculateCodServiceFee(subtotal) : 0
   const pickup = payment === 'pay_upon_pickup'
-  const dueNow = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : subtotal + shipping
+  const layawayEligible = layawayQuote?.eligible === true
+  const layawayPrice = Number(layawayQuote?.layaway_price ?? 0)
+  const layawayDownPayment = Number(layawayQuote?.down_payment ?? 0)
+  const layawayBalance = Number(layawayQuote?.remaining_balance ?? 0)
+  const layawayInstallmentOne = Number(layawayQuote?.installment_one ?? 0)
+  const layawayInstallmentTwo = Number(layawayQuote?.installment_two ?? 0)
+  const layawayInstallmentThree = Number(layawayQuote?.installment_three ?? 0)
+  const dueNow = pickup ? 0 : payment === 'cash_on_delivery' ? shipping + codFee : payment === 'layaway' ? layawayDownPayment : subtotal + shipping
   const overallTotal = subtotal + shipping + codFee
   const proofNeeded = !pickup
   const blockingReasons = [
@@ -93,6 +109,8 @@ export function GuestCheckout() {
     ...(sameDay && !sameDayAcknowledged ? [{ code: 'same_day_ack_missing', message: 'Confirm Same-Day delivery.' }] : []),
     ...(pickup && !reservation ? [{ code: 'pickup_ack_missing', message: 'Confirm that this is a reservation request.' }] : []),
     ...(payment === 'cash_on_delivery' && !codConfirm ? [{ code: 'cod_ack_missing', message: 'Confirm the COD payment requirement.' }] : []),
+    ...(payment === 'layaway' && !layawayQuote ? [{ code: 'layaway_quote_loading', message: 'Layaway pricing is loading.' }] : []),
+    ...(payment === 'layaway' && !layawayTermsAccepted ? [{ code: 'layaway_terms_missing', message: 'Accept the Layaway Terms.' }] : []),
   ]
   const submitDisabled = blockingReasons.length > 0
   const blockingReasonSignature = blockingReasons.map((reason) => reason.code).join(',')
@@ -128,6 +146,7 @@ export function GuestCheckout() {
     setProofError(null)
     setCodConfirm(false)
     setReservation(false)
+    setLayawayTermsAccepted(false)
     setQrAvailable(nextPayment === 'pay_upon_pickup')
     // A prepaid method must not silently replace an already-selected
     // Same-Day delivery method with Standard Shipping.
@@ -201,6 +220,17 @@ export function GuestCheckout() {
     try { sessionStorage.setItem('hydro-order-attempt-key', nextKey) } catch { /* The ref still preserves retries on this page. */ }
     return nextKey
   }
+  const getLayawayAccessCode = () => {
+    if (layawayAccessCodeRef.current) return layawayAccessCodeRef.current
+    const key = `hydro-layaway-access-code-${getOrderAttemptKey()}`
+    try {
+      const saved = sessionStorage.getItem(key)
+      if (saved) return layawayAccessCodeRef.current = saved
+      const created = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll('-', '')
+      sessionStorage.setItem(key, created)
+      return layawayAccessCodeRef.current = created
+    } catch { return layawayAccessCodeRef.current = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll('-', '') }
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault()
@@ -214,6 +244,8 @@ export function GuestCheckout() {
     if (proofNeeded && !proof) return setError('A payment screenshot is required.')
     if (pickup && !reservation) return setError('Confirm that this is only a reservation request.')
     if (payment === 'cash_on_delivery' && !codConfirm) return setError('Confirm the COD payment requirement.')
+    if (payment === 'layaway' && !layawayEligible) return setError('Layaway is available for merchandise totals of ₱4,500 or more.')
+    if (payment === 'layaway' && !layawayTermsAccepted) return setError('Please accept the Layaway Terms before continuing.')
     if (proof && !proofContentType) return setProofError('Please choose a valid JPG, PNG, or WebP screenshot.')
     if (proof && proof.size === 0) return setError('The payment screenshot file is empty. Please choose another file.')
     if (proof && proof.size > maximumProofSize) return setError('The payment screenshot must be 5 MB or smaller.')
@@ -232,20 +264,24 @@ export function GuestCheckout() {
         logCheckoutDiagnostic({ attemptId, eventCode: 'file_read_completed', phase: 'proof_processing', mimeCategory: proofMimeCategory(proofContentType), sizeBucket: proofSizeBucket(proof.size) })
       }
       logCheckoutDiagnostic({ attemptId, eventCode: 'edge_invoke_started', phase: 'submission' })
+      const layawayAccessCode = payment === 'layaway' ? getLayawayAccessCode() : undefined
       const data = await invokeGuestOrder({
           ...form,
           customer_name: customerName,
           delivery_method: delivery,
           same_day_acknowledged: sameDayAcknowledged,
           payment_method: payment,
+          layaway_terms_accepted: payment === 'layaway' ? layawayTermsAccepted : undefined,
+          layaway_access_code: layawayAccessCode,
           payment_option_name: getPaymentOption(payment, bankOptionId)?.name ?? null,
           items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })),
           idempotency_key: getOrderAttemptKey(),
           payment_proof: paymentProof,
       }, controller.signal)
       logCheckoutDiagnostic({ attemptId, eventCode: 'edge_invoke_completed', phase: 'submission' })
-      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, customer_name: customerName, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, variant_group_name: line.variant_group_name, variant_name: line.variant_name, quantity: line.quantity, line_total: Number(line.price) * line.quantity, is_clearance: line.is_clearance ?? false })) }))
+      sessionStorage.setItem('hydro-order-confirmation', JSON.stringify({ ...data.order, layaway_access_code: data.layaway_access_code ?? layawayAccessCode, customer_name: customerName, mobile_number: form.mobile_number, city_municipality: form.city_municipality, delivery_method: delivery, payment_method: payment, order_date: new Date().toISOString(), items: lines.map((line) => ({ name: line.name, variant_group_name: line.variant_group_name, variant_name: line.variant_name, quantity: line.quantity, line_total: Number(line.price) * line.quantity, is_clearance: line.is_clearance ?? false })) }))
       sessionStorage.removeItem('hydro-order-attempt-key')
+      if (payment === 'layaway') try { sessionStorage.removeItem(`hydro-layaway-access-code-${getOrderAttemptKey()}`) } catch { /* The confirmation still carries the code. */ }
       clear()
       router.push('/order-confirmation')
     } catch (caught) {
@@ -305,17 +341,20 @@ export function GuestCheckout() {
         <section className="checkout-card" ref={paymentSectionRef}><h2>Payment</h2>
           <p className="payment-choice-intro">Choose how you&apos;d like to pay.</p>
           <div className="payment-methods" role="radiogroup" aria-label="Payment method">
-            {paymentMethods.filter((method) => !(sameDay && method.id === 'cash_on_delivery')).map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.description}</small></span></button>)}
+            {paymentMethods.filter((method) => !(sameDay && method.id === 'cash_on_delivery') && (method.id !== 'layaway' || layawayEligible)).map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.description}</small></span></button>)}
           </div>
+          {!layawayEligible && <p>Layaway is available for merchandise totals of ₱4,500 or more.</p>}
+          {payment === 'layaway' && <aside className="cod-payment-breakdown"><section><h3>Layaway plan</h3><div><span>Regular price</span><strong>{peso(layawayQuote?.merchandise_price ?? 0)}</strong></div><div><span>Layaway price</span><strong>{peso(layawayPrice)}</strong></div><div className="cod-primary-amount"><span>30% DP due today</span><strong>{peso(layawayDownPayment)}</strong></div><div><span>Remaining balance</span><strong>{peso(layawayBalance)}</strong></div><p>Installments: {peso(layawayInstallmentOne)}, {peso(layawayInstallmentTwo)}, and {peso(layawayInstallmentThree)} plus shipping on the final payment.</p><p>The unit is released only after full payment.</p></section></aside>}
           {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><section><h3>Pay Now</h3><div><span>Shipping — {shippingQuote.shippingClass}</span><strong>{peso(shipping)}</strong></div><div><span>{codServiceFeeLabel}</span><strong>{peso(codFee)}</strong></div><div className="cod-primary-amount"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div></section><section><h3>Pay Upon Delivery</h3><div><span>Merchandise subtotal</span><strong>{peso(subtotal)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div></section><section className="cod-order-value"><h3>Order Value</h3><div><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></section></div>}
           {payment && proofNeeded && <PaymentQr method={payment} amount={dueNow} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
           {payment && proofNeeded && (qrAvailable || proof) && <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input ref={proofInputRef} required type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => void selectProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proofError && <p className="proof-error" role="alert">{proofError}</p>}{proof && previewUrl && <img src={previewUrl} alt="Payment screenshot preview" />}</div>}
           {payment === 'pay_upon_pickup' && <label className="checkout-check"><input type="checkbox" checked={reservation} onChange={(event) => setReservation(event.target.checked)} /> I understand that this is only a reservation request and I must wait for Hydro Blasters MNL to confirm before visiting.</label>}
           {payment === 'cash_on_delivery' && <label className="checkout-check"><input type="checkbox" checked={codConfirm} onChange={(event) => setCodConfirm(event.target.checked)} /> I understand that the shipping fee and COD service fee are due now, while the merchandise amount will be paid to the courier upon delivery.</label>}
+          {payment === 'layaway' && <aside className="same-day-card"><strong>LAYAWAY TERMS</strong><p>• 30% down payment to start.<br />• Remaining balance is payable in 3 monthly installments.<br />• 1–7 days late: 5% late fee.<br />• 8+ days late: 10% late fee.<br />• All currently due payments and late fees must be paid together. Partial catch-up payments are not allowed.<br />• 2 consecutive missed payments will cancel the layaway and forfeit the reserved unit. <b>NO REFUND WILL BE ISSUED.</b><br />• Early full payment is allowed with no penalty.<br />• Shipping is added to the final payment. The unit is released only after full payment.</p><label className="checkout-check"><input type="checkbox" checked={layawayTermsAccepted} onChange={(event) => setLayawayTermsAccepted(event.target.checked)} /> I have read and agree to the Layaway Terms.</label></aside>}
         </section>
         <section className="checkout-final-cta"><p className="eyebrow">Ready to submit your order?</p><SummarySubmit /></section>
       </div>
-      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name}{line.variant_name ? <small>{line.variant_group_name || 'Option'}: {line.variant_name}</small> : null}{line.is_clearance ? <small className="clearance-exclusion">Clearance Sale</small> : null} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>{sameDay ? 'Same-Day / On-Demand Delivery' : `Shipping — ${shippingQuote.shippingClass}`}</dt><dd>{peso(shipping)}</dd></div>{sameDay && <p className="same-day-summary-note">Courier fee paid directly to rider.</p>}<div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
+      <aside className="checkout-summary"><h2>Order Summary</h2><div className="checkout-products">{lines.map((line) => <p key={line.id}><span>{line.name}{line.variant_name ? <small>{line.variant_group_name || 'Option'}: {line.variant_name}</small> : null}{line.is_clearance ? <small className="clearance-exclusion">Clearance Sale</small> : null} × {line.quantity}</span><strong>{peso(Number(line.price) * line.quantity)}</strong></p>)}</div>{payment === 'cash_on_delivery' ? <div className="cod-summary"><div className="cod-summary-now"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div><div className="cod-summary-total"><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></div> : payment === 'layaway' ? <dl><div><dt>Regular price</dt><dd>{peso(layawayQuote?.merchandise_price ?? 0)}</dd></div><div><dt>Layaway price</dt><dd>{peso(layawayPrice)}</dd></div><div className="checkout-total"><dt>DP due today</dt><dd>{peso(layawayDownPayment)}</dd></div><p className="same-day-summary-note">Shipping is added only to the final payment.</p></dl> : <dl><div><dt>Subtotal</dt><dd>{peso(subtotal)}</dd></div><div><dt>{sameDay ? 'Same-Day / On-Demand Delivery' : `Shipping — ${shippingQuote.shippingClass}`}</dt><dd>{peso(shipping)}</dd></div>{sameDay && <p className="same-day-summary-note">Courier fee paid directly to rider.</p>}<div className="checkout-total"><dt>Total</dt><dd>{peso(overallTotal)}</dd></div></dl>}<SummarySubmit className="checkout-summary-submit" /></aside>
     </form>
   </section>
 }

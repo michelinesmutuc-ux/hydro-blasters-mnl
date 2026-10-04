@@ -27,7 +27,7 @@ export const paymentConfiguration = {
 }
 
 export function getPaymentOption(method: string, bankOptionId: string | null) {
-  if (method === 'gcash') return paymentConfiguration.gcash
+  if (method === 'gcash' || method === 'layaway') return paymentConfiguration.gcash
   if (method === 'cash_on_delivery') return paymentConfiguration.cashOnDelivery
   if (method === 'bank_transfer') return paymentConfiguration.bankTransfer.find((option) => option.id === bankOptionId && option.enabled) ?? null
   return null
