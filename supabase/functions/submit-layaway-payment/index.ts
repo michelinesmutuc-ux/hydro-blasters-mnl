@@ -6,6 +6,7 @@ const allowedProofTypes = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 const text = (value: unknown) => typeof value === 'string' ? value.trim() : ''
 const orderReference = (value: unknown) => text(value).replace(/^#\s*/, '').toUpperCase()
+const validAccessCode = (value: string) => /^LYW-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(value) || /^[A-Za-z0-9_-]{32,}$/.test(value)
 
 async function sha256(value: string) {
   const bytes = new TextEncoder().encode(value)
@@ -34,7 +35,7 @@ Deno.serve(async (request) => {
     const accessCode = text(body.access_code)
     attemptId = text(body.payment_attempt_key)
     const contentType = text(body.payment_proof?.contentType)
-    if (!/^HBMNL-[A-Z0-9-]{6,}$/.test(reference) || accessCode.length < 32 || !/^[0-9a-f-]{36}$/i.test(attemptId)) return reply({ error: 'Layaway payment request is invalid.' }, 400)
+    if (!/^HBMNL-[A-Z0-9-]{6,}$/.test(reference) || !validAccessCode(accessCode) || !/^[0-9a-f-]{36}$/i.test(attemptId)) return reply({ error: 'Layaway payment request is invalid.' }, 400)
     if (!allowedProofTypes.has(contentType) || !text(body.payment_proof?.base64)) return reply({ error: 'A JPG, PNG, or WebP payment screenshot is required.' }, 400)
     const proofBytes = Uint8Array.from(atob(body.payment_proof.base64), (char) => char.charCodeAt(0))
     if (!proofBytes.byteLength || proofBytes.byteLength > 5 * 1024 * 1024) return reply({ error: 'Payment proof must be between 1 byte and 5 MB.' }, 400)

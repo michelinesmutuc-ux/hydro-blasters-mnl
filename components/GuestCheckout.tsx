@@ -242,10 +242,18 @@ export function GuestCheckout() {
     try {
       const saved = sessionStorage.getItem(key)
       if (saved) return layawayAccessCodeRef.current = saved
-      const created = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll('-', '')
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+      const bytes = crypto.getRandomValues(new Uint8Array(12))
+      const characters = [...bytes].map((byte) => alphabet[byte & 31]).join('')
+      const created = `LYW-${characters.slice(0, 4)}-${characters.slice(4, 8)}-${characters.slice(8, 12)}`
       sessionStorage.setItem(key, created)
       return layawayAccessCodeRef.current = created
-    } catch { return layawayAccessCodeRef.current = `${crypto.randomUUID()}${crypto.randomUUID()}`.replaceAll('-', '') }
+    } catch {
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+      const bytes = crypto.getRandomValues(new Uint8Array(12))
+      const characters = [...bytes].map((byte) => alphabet[byte & 31]).join('')
+      return layawayAccessCodeRef.current = `LYW-${characters.slice(0, 4)}-${characters.slice(4, 8)}-${characters.slice(8, 12)}`
+    }
   }
 
   async function submit(event: React.FormEvent) {
