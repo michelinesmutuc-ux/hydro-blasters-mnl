@@ -39,6 +39,7 @@ export function GuestCheckout() {
   const [sameDayAcknowledged, setSameDayAcknowledged] = useState(false)
   const [layawayTermsAccepted, setLayawayTermsAccepted] = useState(false)
   const [layawayQuote, setLayawayQuote] = useState<{ merchandise_price: number; shipping_fee: number; layaway_price: number; down_payment: number; remaining_balance: number; installment_one: number; installment_two: number; installment_three: number; eligible: boolean } | null>(null)
+  const [layawayQuoteError, setLayawayQuoteError] = useState(false)
   const [sameDayNearbyAreas, setSameDayNearbyAreas] = useState<SameDayNearbyArea[]>([])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -80,7 +81,8 @@ export function GuestCheckout() {
   }, [delivery, form.city_municipality, form.region, sameDayNearbyAreas])
   useEffect(() => {
     let active = true
-    void supabase.functions.invoke('quote-layaway', { body: { items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })), delivery_method: delivery } }).then(({ data }) => { if (active) setLayawayQuote(data?.quote ?? null) })
+    setLayawayQuote(null); setLayawayQuoteError(false)
+    void supabase.functions.invoke('quote-layaway', { body: { items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })), delivery_method: delivery } }).then(({ data, error: quoteError }) => { if (!active) return; setLayawayQuote(data?.quote ?? null); setLayawayQuoteError(Boolean(quoteError || data?.error || !data?.quote)) })
     return () => { active = false }
   }, [lines, delivery])
 
@@ -341,9 +343,10 @@ export function GuestCheckout() {
         <section className="checkout-card" ref={paymentSectionRef}><h2>Payment</h2>
           <p className="payment-choice-intro">Choose how you&apos;d like to pay.</p>
           <div className="payment-methods" role="radiogroup" aria-label="Payment method">
-            {paymentMethods.filter((method) => !(sameDay && method.id === 'cash_on_delivery') && (method.id !== 'layaway' || layawayEligible)).map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.description}</small></span></button>)}
+            {paymentMethods.filter((method) => !(sameDay && method.id === 'cash_on_delivery') && (method.id !== 'layaway' || layawayEligible || !layawayQuote)).map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} disabled={method.id === 'layaway' && !layawayEligible} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.id === 'layaway' && !layawayQuote ? layawayQuoteError ? 'Layaway pricing is temporarily unavailable.' : 'Checking Layaway eligibility…' : method.description}</small></span></button>)}
           </div>
-          {!layawayEligible && <p>Layaway is available for merchandise totals of ₱4,500 or more.</p>}
+          {!layawayEligible && layawayQuote && <p>Layaway is available for merchandise totals of ₱4,500 or more.</p>}
+          {layawayQuoteError && <p className="checkout-inline-error">Layaway pricing is temporarily unavailable. Please refresh or contact Hydro Blasters MNL.</p>}
           {payment === 'layaway' && <aside className="cod-payment-breakdown"><section><h3>Layaway plan</h3><div><span>Regular price</span><strong>{peso(layawayQuote?.merchandise_price ?? 0)}</strong></div><div><span>Layaway price</span><strong>{peso(layawayPrice)}</strong></div><div className="cod-primary-amount"><span>30% DP due today</span><strong>{peso(layawayDownPayment)}</strong></div><div><span>Remaining balance</span><strong>{peso(layawayBalance)}</strong></div><p>Installments: {peso(layawayInstallmentOne)}, {peso(layawayInstallmentTwo)}, and {peso(layawayInstallmentThree)} plus shipping on the final payment.</p><p>The unit is released only after full payment.</p></section></aside>}
           {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><section><h3>Pay Now</h3><div><span>Shipping — {shippingQuote.shippingClass}</span><strong>{peso(shipping)}</strong></div><div><span>{codServiceFeeLabel}</span><strong>{peso(codFee)}</strong></div><div className="cod-primary-amount"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div></section><section><h3>Pay Upon Delivery</h3><div><span>Merchandise subtotal</span><strong>{peso(subtotal)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div></section><section className="cod-order-value"><h3>Order Value</h3><div><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></section></div>}
           {payment && proofNeeded && <PaymentQr method={payment} amount={dueNow} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}

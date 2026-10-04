@@ -132,7 +132,7 @@ Deno.serve(async (request) => {
 
     EdgeRuntime.waitUntil(triggerOrderNotification(admin, url, serviceKey, order))
 
-    const { data: finalOrder, error: finalOrderError } = await admin.from('orders').select('id,order_reference,merchandise_subtotal,shipping_fee,shipping_tier,cod_service_fee,upfront_amount,rider_collectible_amount,overall_total,payment_status,order_status,payment_method,delivery_method,layaway_price,layaway_status').eq('id', order.order_id).single()
+    const { data: finalOrder, error: finalOrderError } = await admin.from('orders').select('id,order_reference,merchandise_subtotal,shipping_fee,shipping_tier,cod_service_fee,upfront_amount,rider_collectible_amount,overall_total,promo_name,promo_discount,payment_status,order_status,payment_method,delivery_method,layaway_price,layaway_status').eq('id', order.order_id).single()
     if (finalOrderError || !finalOrder) return reply({ error: 'Order was created but could not be finalized. Please contact Hydro Blasters MNL.' }, 500)
     return reply({ order: finalOrder, ...(layawayAccessCode ? { layaway_access_code: layawayAccessCode } : {}) }, 201)
   } catch { return reply({ error: 'Checkout could not be completed. Please try again.' }, 500) }
