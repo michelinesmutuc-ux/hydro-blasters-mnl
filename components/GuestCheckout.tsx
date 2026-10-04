@@ -14,6 +14,7 @@ import { CheckoutTimeoutError, createAnonymousAttemptId, detectSupportedProofTyp
 const peso = (amount: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount)
 const initial = { first_name: '', last_name: '', mobile_number: '', house_unit: '', street: '', barangay: '', city_municipality: '', region: '', postal_code: '', order_notes: '' }
 type PaymentMethod = 'gcash' | 'bank_transfer' | 'cash_on_delivery' | 'pay_upon_pickup' | 'layaway'
+type LayawayPaymentMethod = 'gcash' | 'bank_transfer'
 
 const paymentMethods: { id: PaymentMethod; name: string; description: string }[] = [
   { id: 'gcash', name: 'GCash', description: 'Pay instantly using the GCash QR.' },
@@ -30,6 +31,7 @@ export function GuestCheckout() {
   const [form, setForm] = useState(initial)
   const [delivery, setDelivery] = useState<'nationwide_delivery' | 'same_day_delivery' | 'showroom_pickup'>('nationwide_delivery')
   const [payment, setPayment] = useState<PaymentMethod | null>(null)
+  const [layawayPaymentMethod, setLayawayPaymentMethod] = useState<LayawayPaymentMethod | null>(null)
   const [bankOptionId, setBankOptionId] = useState<string | null>(null)
   const [proof, setProof] = useState<File | null>(null)
   const [proofContentType, setProofContentType] = useState<SupportedProofType | null>(null)
@@ -92,6 +94,7 @@ export function GuestCheckout() {
   const shipping = delivery === 'nationwide_delivery' ? shippingQuote.fee : 0
   const codFee = payment === 'cash_on_delivery' ? calculateCodServiceFee(subtotal) : 0
   const pickup = payment === 'pay_upon_pickup'
+  const paymentProofMethod = payment === 'layaway' ? layawayPaymentMethod : payment
   const layawayEligible = layawayQuote?.eligible === true
   const layawayPrice = Number(layawayQuote?.layaway_price ?? 0)
   const layawayDownPayment = Number(layawayQuote?.down_payment ?? 0)
@@ -105,9 +108,10 @@ export function GuestCheckout() {
   const blockingReasons = [
     ...(saving ? [{ code: 'saving', message: 'Your order is being submitted. Please wait.' }] : []),
     ...(!payment ? [{ code: 'payment_missing', message: 'Choose a payment method.' }] : []),
-    ...(payment === 'bank_transfer' && !bankOptionId ? [{ code: 'bank_missing', message: 'Choose your bank.' }] : []),
-    ...(payment !== null && proofNeeded && !qrAvailable && !proof && (payment !== 'bank_transfer' || Boolean(bankOptionId)) ? [{ code: 'payment_details_loading', message: 'Payment details are still loading.' }] : []),
-    ...(payment !== null && proofNeeded && qrAvailable && !proof && (payment !== 'bank_transfer' || Boolean(bankOptionId)) ? [{ code: 'proof_missing', message: 'Choose a valid payment screenshot.' }] : []),
+    ...(payment === 'layaway' && !layawayPaymentMethod ? [{ code: 'layaway_payment_missing', message: 'Choose how to make your Layaway payment.' }] : []),
+    ...((payment === 'bank_transfer' || (payment === 'layaway' && layawayPaymentMethod === 'bank_transfer')) && !bankOptionId ? [{ code: 'bank_missing', message: 'Choose your bank.' }] : []),
+    ...(paymentProofMethod !== null && proofNeeded && !qrAvailable && !proof && (paymentProofMethod !== 'bank_transfer' || Boolean(bankOptionId)) ? [{ code: 'payment_details_loading', message: 'Payment details are still loading.' }] : []),
+    ...(paymentProofMethod !== null && proofNeeded && qrAvailable && !proof && (paymentProofMethod !== 'bank_transfer' || Boolean(bankOptionId)) ? [{ code: 'proof_missing', message: 'Choose a valid payment screenshot.' }] : []),
     ...(sameDay && !sameDayAcknowledged ? [{ code: 'same_day_ack_missing', message: 'Confirm Same-Day delivery.' }] : []),
     ...(pickup && !reservation ? [{ code: 'pickup_ack_missing', message: 'Confirm that this is a reservation request.' }] : []),
     ...(payment === 'cash_on_delivery' && !codConfirm ? [{ code: 'cod_ack_missing', message: 'Confirm the COD payment requirement.' }] : []),
@@ -142,6 +146,7 @@ export function GuestCheckout() {
   }
   const selectPayment = (nextPayment: PaymentMethod) => {
     setPayment(nextPayment)
+    setLayawayPaymentMethod(null)
     setBankOptionId(null)
     setProof(null)
     setProofContentType(null)
@@ -158,10 +163,19 @@ export function GuestCheckout() {
         ? 'nationwide_delivery'
         : current)
   }
+  const selectLayawayPaymentMethod = (nextMethod: LayawayPaymentMethod) => {
+    setLayawayPaymentMethod(nextMethod)
+    setBankOptionId(null)
+    setProof(null)
+    setProofContentType(null)
+    setProofError(null)
+    setQrAvailable(false)
+  }
   const changeDelivery = (nextDelivery: typeof delivery) => {
     if (nextDelivery === 'same_day_delivery' && !sameDayEligible) return
     setDelivery(nextDelivery)
     setPayment(null)
+    setLayawayPaymentMethod(null)
     setBankOptionId(null)
     setProof(null)
     setProofContentType(null)
@@ -239,7 +253,8 @@ export function GuestCheckout() {
     setError(null)
     setSubmissionRecovery(false)
     if (!payment) return setError('Please choose a payment method.')
-    if (payment === 'bank_transfer' && !bankOptionId) return setError('Choose your bank before placing your order.')
+    if (payment === 'layaway' && !layawayPaymentMethod) return setError('Choose how to make your Layaway payment.')
+    if ((payment === 'bank_transfer' || (payment === 'layaway' && layawayPaymentMethod === 'bank_transfer')) && !bankOptionId) return setError('Choose your bank before placing your order.')
     if (proofNeeded && !qrAvailable && !proof) return setError(payment === 'bank_transfer' ? 'Bank transfer is temporarily unavailable. Please choose another payment method.' : 'Payment details are temporarily unavailable. Please contact Hydro Blasters MNL before sending payment.')
     if (sameDay && !sameDayEligible) return setError('Same-Day / On-Demand Delivery is available only in Metro Manila and selected nearby areas.')
     if (sameDay && !sameDayAcknowledged) return setError('Confirm that you will wait for the Ready for Rider confirmation.')
@@ -275,7 +290,7 @@ export function GuestCheckout() {
           payment_method: payment,
           layaway_terms_accepted: payment === 'layaway' ? layawayTermsAccepted : undefined,
           layaway_access_code: layawayAccessCode,
-          payment_option_name: getPaymentOption(payment, bankOptionId)?.name ?? null,
+          payment_option_name: getPaymentOption(paymentProofMethod ?? '', bankOptionId)?.name ?? null,
           items: lines.map((line) => ({ product_id: line.product_id ?? line.id, variant_id: line.variant_id ?? null, quantity: line.quantity })),
           idempotency_key: getOrderAttemptKey(),
           payment_proof: paymentProof,
@@ -348,8 +363,9 @@ export function GuestCheckout() {
           {!layawayEligible && layawayQuote && <p>Layaway is available for merchandise totals of ₱4,500 or more.</p>}
           {layawayQuoteError && <p className="checkout-inline-error">Layaway pricing is temporarily unavailable. Please refresh or contact Hydro Blasters MNL.</p>}
           {payment === 'layaway' && <aside className="cod-payment-breakdown"><section><h3>Layaway plan</h3><div><span>Regular price</span><strong>{peso(layawayQuote?.merchandise_price ?? 0)}</strong></div><div><span>Layaway price</span><strong>{peso(layawayPrice)}</strong></div><div className="cod-primary-amount"><span>30% DP due today</span><strong>{peso(layawayDownPayment)}</strong></div><div><span>Remaining balance</span><strong>{peso(layawayBalance)}</strong></div><p>Installments: {peso(layawayInstallmentOne)}, {peso(layawayInstallmentTwo)}, and {peso(layawayInstallmentThree)} plus shipping on the final payment.</p><p>The unit is released only after full payment.</p></section></aside>}
+          {payment === 'layaway' && <div className="payment-qr-card"><strong>Pay the Layaway down payment using</strong><div className="bank-options" role="radiogroup" aria-label="Layaway payment method"><button type="button" role="radio" aria-checked={layawayPaymentMethod === 'gcash'} className={layawayPaymentMethod === 'gcash' ? 'bank-option bank-option-selected' : 'bank-option'} onClick={() => selectLayawayPaymentMethod('gcash')}>GCash</button><button type="button" role="radio" aria-checked={layawayPaymentMethod === 'bank_transfer'} className={layawayPaymentMethod === 'bank_transfer' ? 'bank-option bank-option-selected' : 'bank-option'} onClick={() => selectLayawayPaymentMethod('bank_transfer')}>Bank Transfer</button></div></div>}
           {payment === 'cash_on_delivery' && <div className="cod-payment-breakdown"><section><h3>Pay Now</h3><div><span>Shipping — {shippingQuote.shippingClass}</span><strong>{peso(shipping)}</strong></div><div><span>{codServiceFeeLabel}</span><strong>{peso(codFee)}</strong></div><div className="cod-primary-amount"><span>Amount Due Now</span><strong>{peso(dueNow)}</strong></div></section><section><h3>Pay Upon Delivery</h3><div><span>Merchandise subtotal</span><strong>{peso(subtotal)}</strong></div><div><span>Amount Due to Rider</span><strong>{peso(subtotal)}</strong></div></section><section className="cod-order-value"><h3>Order Value</h3><div><span>Overall Order Total</span><strong>{peso(overallTotal)}</strong></div></section></div>}
-          {payment && proofNeeded && <PaymentQr method={payment} amount={dueNow} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
+          {paymentProofMethod && proofNeeded && <PaymentQr method={paymentProofMethod} amount={dueNow} bankOptionId={bankOptionId} onBankOptionChange={selectBankOption} onAvailabilityChange={setQrAvailable} />}
           {payment && proofNeeded && (qrAvailable || proof) && <div className="proof-card"><strong>Payment Screenshot Upload</strong><p>After payment, upload a screenshot of the successful transaction below.</p><input ref={proofInputRef} required type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onChange={(event) => void selectProof(event.target.files?.[0] ?? null)} /><p>Accepted: JPG, PNG, WebP · Maximum file size: 5 MB</p>{proofError && <p className="proof-error" role="alert">{proofError}</p>}{proof && previewUrl && <img src={previewUrl} alt="Payment screenshot preview" />}</div>}
           {payment === 'pay_upon_pickup' && <label className="checkout-check"><input type="checkbox" checked={reservation} onChange={(event) => setReservation(event.target.checked)} /> I understand that this is only a reservation request and I must wait for Hydro Blasters MNL to confirm before visiting.</label>}
           {payment === 'cash_on_delivery' && <label className="checkout-check"><input type="checkbox" checked={codConfirm} onChange={(event) => setCodConfirm(event.target.checked)} /> I understand that the shipping fee and COD service fee are due now, while the merchandise amount will be paid to the courier upon delivery.</label>}

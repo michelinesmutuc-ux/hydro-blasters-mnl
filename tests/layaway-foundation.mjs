@@ -10,6 +10,7 @@ await db.exec(readFileSync(new URL('./fixtures/schema.sql', import.meta.url), 'u
 await db.exec('alter table public.orders add primary key (id)')
 try {
   await db.exec(readFileSync(new URL('../supabase/migrations/20261004000000_add_layaway_payment_foundation.sql', import.meta.url), 'utf8'))
+  await db.exec(readFileSync(new URL('../supabase/migrations/20261004010000_fix_layaway_payment_proof_path.sql', import.meta.url), 'utf8'))
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)
   process.exit(1)
@@ -34,6 +35,9 @@ await assert.rejects(() => createLayaway(4499), /₱4,500 or more/)
 
 const dpAttempt = randomUUID()
 await db.query('select * from prepare_layaway_payment($1,$2,false)', [first.id, dpAttempt])
+const firstReference = (await db.query('select order_reference from orders where id=$1', [first.id])).rows[0].order_reference
+await db.query('select attach_layaway_payment_proof($1,$2,$3)', [first.id, dpAttempt, `orders/${firstReference}/layaway/${dpAttempt}.png`])
+assert.equal((await db.query(`select payment_status from order_payments where order_id=$1 and payment_kind='down_payment'`, [first.id])).rows[0].payment_status, 'pending_verification')
 await db.query(`update order_payments set payment_status='verified', amount_paid=amount_due, verified_at='2026-10-04T08:00:00+08' where order_id=$1 and payment_kind='down_payment'`, [first.id])
 rows = (await db.query('select payment_kind,installment_number,merchandise_amount,shipping_amount,amount_due,due_date,payment_status from order_payments where order_id=$1 order by installment_number nulls first', [first.id])).rows
 assert.deepEqual(rows.map((row) => Number(row.merchandise_amount)), [2400, 1866.67, 1866.67, 1866.66])
