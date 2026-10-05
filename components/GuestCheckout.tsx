@@ -21,7 +21,7 @@ const paymentMethods: { id: PaymentMethod; name: string; description: string; no
   { id: 'bank_transfer', name: 'Bank Transfer', description: 'Transfer using your preferred bank.' },
   { id: 'cash_on_delivery', name: 'Cash on Delivery', description: 'Pay the merchandise amount upon delivery. Shipping and COD fees are due now.' },
   { id: 'pay_upon_pickup', name: 'Showroom Pickup', description: 'Reserve online and pay according to the selected pickup payment option.' },
-  { id: 'layaway', name: 'Layaway', description: 'Pay 30% today, then complete three monthly installments.', note: 'Just add ₱500 to the regular price for Layaway.' },
+  { id: 'layaway', name: 'Layaway', description: 'Pay 30% today, then complete three monthly installments.', note: '+ ₱500 only for Layaway' },
 ]
 const maximumProofSize = 5 * 1024 * 1024
 
@@ -343,7 +343,7 @@ export function GuestCheckout() {
         <section className="checkout-card" ref={paymentSectionRef}><h2>Payment</h2>
           <p className="payment-choice-intro">Choose how you&apos;d like to pay.</p>
           <div className="payment-methods" role="radiogroup" aria-label="Payment method">
-            {paymentMethods.filter((method) => !(sameDay && method.id === 'cash_on_delivery') && (method.id !== 'layaway' || layawayEligible || !layawayQuote)).map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} disabled={method.id === 'layaway' && !layawayEligible} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.id === 'layaway' && !layawayQuote ? layawayQuoteError ? 'Layaway pricing is temporarily unavailable.' : 'Checking Layaway eligibility…' : method.description}</small>{method.note && <small className="payment-method-note">{method.note}</small>}</span></button>)}
+            {paymentMethods.filter((method) => !(sameDay && method.id === 'cash_on_delivery') && (method.id !== 'layaway' || layawayEligible || !layawayQuote)).map((method) => <button key={method.id} type="button" role="radio" aria-checked={payment === method.id} disabled={method.id === 'layaway' && !layawayEligible} className={payment === method.id ? 'payment-method-card payment-method-card-selected' : 'payment-method-card'} onClick={() => selectPayment(method.id)}><span className="payment-method-radio" aria-hidden="true">{payment === method.id ? '✓' : ''}</span><span><strong>{method.name}</strong><small>{method.id === 'layaway' && !layawayQuote ? layawayQuoteError ? 'Layaway pricing is temporarily unavailable.' : 'Checking Layaway eligibility…' : method.description}</small>{method.note && <small className={method.id === 'layaway' ? 'layaway-price-notice' : 'payment-method-note'}>{method.note}</small>}</span></button>)}
           </div>
           {!layawayEligible && layawayQuote && <p>Layaway is available for merchandise totals of ₱4,500 or more.</p>}
           {layawayQuoteError && <p className="checkout-inline-error">Layaway pricing is temporarily unavailable. Please refresh or contact Hydro Blasters MNL.</p>}

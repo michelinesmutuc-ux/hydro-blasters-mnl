@@ -34,6 +34,7 @@ Deno.serve(async (request) => {
     const reference = orderReference(body.order_reference)
     const accessCode = text(body.access_code)
     attemptId = text(body.payment_attempt_key)
+    const paymentMode = body.payment_mode === 'next_installment' || body.payment_mode === 'pay_all' ? body.payment_mode : 'due'
     const contentType = text(body.payment_proof?.contentType)
     if (!/^HBMNL-[A-Z0-9-]{6,}$/.test(reference) || !validAccessCode(accessCode) || !/^[0-9a-f-]{36}$/i.test(attemptId)) return reply({ error: 'Layaway payment request is invalid.' }, 400)
     if (!allowedProofTypes.has(contentType) || !text(body.payment_proof?.base64)) return reply({ error: 'A JPG, PNG, or WebP payment screenshot is required.' }, 400)
@@ -43,7 +44,9 @@ Deno.serve(async (request) => {
     const { data: order, error: orderError } = await admin.from('orders').select('id,order_reference,layaway_status,layaway_access_token_hash').eq('order_reference', reference).eq('payment_method', 'layaway').maybeSingle()
     if (orderError || !order || !order.layaway_access_token_hash || !equalHash(await sha256(accessCode), order.layaway_access_token_hash)) return reply({ error: 'Layaway order access could not be verified.' }, 403)
     orderId = order.id
-    const { data: prepared, error: prepareError } = await admin.rpc('prepare_layaway_payment', { p_order_id: order.id, p_attempt: attemptId, p_pay_all: body.pay_all === true })
+    const { data: prepared, error: prepareError } = paymentMode === 'next_installment'
+      ? await admin.rpc('prepare_next_layaway_payment', { p_order_id: order.id, p_attempt: attemptId })
+      : await admin.rpc('prepare_layaway_payment', { p_order_id: order.id, p_attempt: attemptId, p_pay_all: paymentMode === 'pay_all' || body.pay_all === true })
     if (prepareError || !prepared?.[0]) return reply({ error: prepareError?.message ?? 'Layaway payment is not available.' }, 409)
     if (prepared[0].payment_batch_id !== attemptId || !Array.isArray(prepared[0].payment_ids) || prepared[0].payment_ids.length === 0) {
       return reply({ error: 'This layaway was cancelled after two consecutive missed payments. Payments are forfeited and no refund is issued.' }, 409)

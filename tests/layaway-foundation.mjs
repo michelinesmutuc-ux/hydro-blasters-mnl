@@ -13,6 +13,7 @@ try {
   await db.exec(readFileSync(new URL('../supabase/migrations/20261004010000_fix_layaway_payment_proof_path.sql', import.meta.url), 'utf8'))
   await db.exec(readFileSync(new URL('../supabase/migrations/20261004020000_cancel_overdue_final_layaway_installment.sql', import.meta.url), 'utf8'))
   await db.exec(readFileSync(new URL('../supabase/migrations/20261004030000_guard_layaway_ledger_verification.sql', import.meta.url), 'utf8'))
+  await db.exec(readFileSync(new URL('../supabase/migrations/20261004040000_allow_early_next_layaway_installment.sql', import.meta.url), 'utf8'))
 } catch (error) {
   console.error(error instanceof Error ? error.message : error)
   process.exit(1)
@@ -120,15 +121,17 @@ assert.ok(lifecycleRows[1].due_date)
 assert.equal(Number(lifecycleRows.find((row) => row.installment_number === 1)?.merchandise_amount), 1400)
 assert.ok(new Date(lifecycleRows.find((row) => row.installment_number === 1)?.due_date).getTime() > Date.now())
 assert.equal((await db.query('select layaway_status from orders where id=$1', [lifecycle.id])).rows[0].layaway_status, 'active')
-await db.query(`update order_payments set due_date=current_date, payment_status='due' where order_id=$1 and installment_number=1`, [lifecycle.id])
+const originalInstallmentTwoDueDate = lifecycleRows.find((row) => row.installment_number === 2)?.due_date
 const installmentAttempt = randomUUID()
-await db.query('select * from prepare_layaway_payment($1,$2,false)', [lifecycle.id, installmentAttempt])
+const earlyInstallment = (await db.query('select * from prepare_next_layaway_payment($1,$2)', [lifecycle.id, installmentAttempt])).rows[0]
+assert.equal(Number(earlyInstallment.total_due), 1400)
 await db.query('select attach_layaway_payment_proof($1,$2,$3)', [lifecycle.id, installmentAttempt, `orders/${lifecycleReference}/layaway/${installmentAttempt}.png`])
 assert.equal((await db.query(`select payment_status from order_payments where order_id=$1 and installment_number=1`, [lifecycle.id])).rows[0].payment_status, 'pending_verification')
 await db.query('select verify_layaway_payment_batch($1,$2,true)', [lifecycle.id, installmentAttempt])
-lifecycleRows = (await db.query(`select installment_number,amount_paid,payment_status from order_payments where order_id=$1 order by installment_number nulls first`, [lifecycle.id])).rows
+lifecycleRows = (await db.query(`select installment_number,amount_paid,due_date,payment_status from order_payments where order_id=$1 order by installment_number nulls first`, [lifecycle.id])).rows
 assert.equal(lifecycleRows[1].payment_status, 'verified')
 assert.equal(Number(lifecycleRows[0].amount_paid) + Number(lifecycleRows[1].amount_paid), 3200)
+assert.equal(new Date(lifecycleRows.find((row) => row.installment_number === 2)?.due_date).toISOString(), new Date(originalInstallmentTwoDueDate).toISOString())
 
 console.log('PASS: layaway foundation: price/DP/installment rounding, verified-payment lifecycle, individual ledger verification, late fees, combined due payments, early payoff, cancellation, and fulfillment guard.')
 await db.close()
