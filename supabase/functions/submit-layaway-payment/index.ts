@@ -21,6 +21,20 @@ function equalHash(first: string, second: string) {
   return difference === 0
 }
 
+async function triggerLayawayPaymentNotification(url: string, serviceKey: string, order: { id: string; order_reference: string }, paymentAttempt: string) {
+  try {
+    const response = await fetch(`${url}/functions/v1/notify-new-order`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: order.id, layawayPaymentAttempt: paymentAttempt }),
+      signal: AbortSignal.timeout(12_000),
+    })
+    if (!response.ok) console.error('Layaway payment notification was not sent.', { orderId: order.id, orderReference: order.order_reference, paymentAttempt, status: response.status })
+  } catch (notificationError) {
+    console.error('Layaway payment notification could not be invoked.', { orderId: order.id, orderReference: order.order_reference, paymentAttempt, notificationError })
+  }
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers })
   if (request.method !== 'POST') return reply({ error: 'Method not allowed.' }, 405)
@@ -62,6 +76,7 @@ Deno.serve(async (request) => {
     if (moveError) throw new Error('Payment proof upload failed.')
     const { data: amount, error: attachError } = await admin.rpc('attach_layaway_payment_proof', { p_order_id: order.id, p_attempt: attemptId, p_proof_path: finalPath })
     if (attachError) throw new Error(attachError.message)
+    EdgeRuntime.waitUntil(triggerLayawayPaymentNotification(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, order, attemptId))
     return reply({ order_reference: order.order_reference, payment_attempt_key: attemptId, amount_due: amount, payment_status: 'pending_verification' }, 201)
   } catch (error) {
     if (temporaryPath) await admin.storage.from('payment-proofs').remove([temporaryPath])

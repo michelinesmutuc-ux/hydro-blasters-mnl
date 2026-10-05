@@ -32,6 +32,7 @@ type Order = {
 }
 
 type OrderItem = { product_id: string; product_name: string; variant_group_name: string | null; variant_name: string | null; quantity: number; line_total: number | string }
+type LayawayPayment = { payment_kind: string; installment_number: number | null; amount_due: number | string; payment_status: string; payment_proof_path: string | null }
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -125,6 +126,18 @@ function formatOrderSummary(order: Order, itemLines: string) {
   return `${getNotificationHeading(order.payment_method)}\n\n🧾 <b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n\n<b>ITEMS ORDERED</b>\n${itemLines}\n\n👤 <b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Mobile</b>: ${escapeTelegramHtml(order.mobile_number)}\n<b>Address</b>: ${escapeTelegramHtml(address)}\n\n${amountLines}\n\n<b>Delivery</b>: ${readable(order.delivery_method)}\n<b>Payment</b>: ${paymentLine}\n<b>Payment proof</b>: ${order.payment_proof_path ? 'Uploaded' : 'Not required'}\n<b>Payment status</b>: ${readable(order.payment_status)}\n<b>Order status</b>: ${readable(order.order_status)}${sameDayNote}\n\n<b>Notes</b>\n${escapeTelegramHtml(order.order_notes || 'None')}\n\n<a href="${adminOrderUrl(order.id)}">OPEN ORDER</a>`
 }
 
+function formatLayawayPaymentLabel(payments: LayawayPayment[]) {
+  if (payments.some((payment) => payment.payment_kind === 'down_payment')) return 'Down Payment'
+  const installments = payments.map((payment) => payment.installment_number).filter((number): number is number => number !== null).sort((first, second) => first - second)
+  if (installments.length === 1) return installments[0] === 3 ? 'Installment 3 / Final Payment' : `Installment ${installments[0]}`
+  return `Installments ${installments.join(', ')}`
+}
+
+function formatLayawayPaymentNotification(order: Order, payments: LayawayPayment[]) {
+  const total = payments.reduce((sum, payment) => sum + Number(payment.amount_due), 0)
+  return `<b>LAYAWAY PAYMENT SUBMITTED</b>\n\n<b>Order</b>: #${escapeTelegramHtml(order.order_reference)}\n<b>Customer</b>: ${escapeTelegramHtml(order.customer_name)}\n<b>Payment</b>: ${escapeTelegramHtml(formatLayawayPaymentLabel(payments))}\n<b>Amount</b>: ${peso(total)}\n<b>Status</b>: Pending Verification\n\n<a href="${adminOrderUrl(order.id)}">OPEN ORDER</a>`
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
@@ -146,9 +159,10 @@ Deno.serve(async (request) => {
   let claimedOrderId: string | null = null
 
   try {
-    const { orderId, resend = false } = await request.json()
+    const { orderId, resend = false, layawayPaymentAttempt } = await request.json()
     if (!String(orderId ?? '').trim()) return json({ error: 'Order ID is required.' }, 400)
     if (typeof resend !== 'boolean') return json({ error: 'Resend setting is invalid.' }, 400)
+    if (layawayPaymentAttempt !== undefined && (!isInternalRequest || !/^[0-9a-f-]{36}$/i.test(String(layawayPaymentAttempt)))) return json({ error: 'Layaway payment notification is invalid.' }, 400)
 
     const { data: order, error: orderError } = await admin
       .from('orders')
@@ -156,6 +170,20 @@ Deno.serve(async (request) => {
       .eq('id', orderId)
       .single<Order>()
     if (orderError || !order) return json({ error: 'Order not found.' }, 404)
+
+    if (layawayPaymentAttempt) {
+      const { data: payments, error: paymentError } = await admin
+        .from('order_payments')
+        .select('payment_kind,installment_number,amount_due,payment_status,payment_proof_path')
+        .eq('order_id', order.id)
+        .eq('payment_batch_id', layawayPaymentAttempt)
+        .eq('payment_status', 'pending_verification')
+      if (paymentError || !payments?.length || payments.some((payment) => !payment.payment_proof_path)) return json({ error: 'Layaway payment is not ready for notification.' }, 409)
+      const telegram = await sendTelegramMessage(formatLayawayPaymentNotification(order, payments as LayawayPayment[]))
+      console.info('Layaway payment Telegram response.', { orderId: order.id, orderReference: order.order_reference, paymentAttempt: layawayPaymentAttempt, httpStatus: telegram.status, result: telegram.code, safeResponse: telegram.safeResponse })
+      if (!telegram.ok) return json({ error: 'Layaway payment Telegram notification was not sent.' }, 502)
+      return json({ message: 'Layaway payment Telegram notification sent.' }, 201)
+    }
 
     const proofRequired = !(order.delivery_method === 'showroom_pickup' && order.payment_method === 'pay_upon_pickup')
     if (proofRequired && !order.payment_proof_path) return json({ error: 'Order payment proof is not attached.' }, 409)
