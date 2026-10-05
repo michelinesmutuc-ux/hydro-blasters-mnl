@@ -33,8 +33,12 @@ Deno.serve(async (request) => {
     const currentlyDue = refreshed.layaway_status === 'awaiting_down_payment'
       ? unpaid.filter((payment) => payment.payment_kind === 'down_payment')
       : unpaid.filter((payment) => payment.payment_kind === 'installment' && payment.due_date && payment.due_date <= today)
-    const amountPaid = rows.filter((payment) => payment.payment_status === 'verified').reduce((sum, payment) => sum + Number(payment.amount_paid), 0)
-    const remainingBalance = unpaid.reduce((sum, payment) => sum + Number(payment.amount_due), 0)
-    return reply({ order: { order_reference: order.order_reference, layaway_status: refreshed.layaway_status, layaway_price: refreshed.layaway_price, shipping_fee: refreshed.shipping_fee, amount_paid: amountPaid, remaining_balance: remainingBalance, amount_currently_due: currentlyDue.reduce((sum, payment) => sum + Number(payment.amount_due), 0), early_payoff_amount: unpaid.reduce((sum, payment) => sum + Number(payment.amount_due), 0), next_due_date: unpaid.find((payment) => payment.payment_kind === 'installment')?.due_date ?? null, payments: rows } })
+    const verified = rows.filter((payment) => payment.payment_status === 'verified')
+    const nextPayment = unpaid.find((payment) => payment.payment_kind === 'installment')
+    const amountPaid = verified.reduce((sum, payment) => sum + Number(payment.amount_paid), 0)
+    // This is the merchandise balance only. Shipping and late fees remain part
+    // of the final/current amount due, rather than inflating the Layaway plan.
+    const remainingBalance = Math.max(0, Number(refreshed.layaway_price) - verified.reduce((sum, payment) => sum + Number(payment.merchandise_amount), 0))
+    return reply({ order: { order_reference: order.order_reference, layaway_status: refreshed.layaway_status, layaway_price: refreshed.layaway_price, shipping_fee: refreshed.shipping_fee, amount_paid: amountPaid, remaining_balance: remainingBalance, amount_currently_due: currentlyDue.reduce((sum, payment) => sum + Number(payment.amount_due), 0), early_payoff_amount: unpaid.reduce((sum, payment) => sum + Number(payment.amount_due), 0), next_payment_amount: nextPayment ? Number(nextPayment.amount_due) : 0, next_due_date: nextPayment?.due_date ?? null, payments: rows } })
   } catch (error) { console.error('Layaway order access failed.', error); return reply({ error: 'Layaway order is temporarily unavailable. Please try again shortly.' }, 503) }
 })

@@ -29,6 +29,7 @@ type Order = {
   promo_name: string | null
   promo_discount: number | string
   payment_status: string
+  layaway_status: string | null
   order_status: string
   same_day_processing?: string | null
   payment_proof_path: string | null
@@ -114,7 +115,7 @@ export function OrdersTable() {
   async function load() {
     let query = supabase
       .from('orders')
-      .select('id,order_reference,customer_name,mobile_number,house_unit,street,barangay,city_municipality,region,postal_code,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,shipping_fee,shipping_tier,promo_name,promo_discount,payment_status,order_status,same_day_processing,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,is_test_order,archived_at,created_at,order_notes')
+      .select('id,order_reference,customer_name,mobile_number,house_unit,street,barangay,city_municipality,region,postal_code,delivery_method,payment_method,selected_payment_option_name,upfront_amount,rider_collectible_amount,showroom_payable_amount,shipping_fee,shipping_tier,promo_name,promo_discount,payment_status,layaway_status,order_status,same_day_processing,payment_proof_path,telegram_notification_status,telegram_notification_type,telegram_notification_attempted_at,telegram_notification_sent_at,telegram_notification_error,is_test_order,archived_at,created_at,order_notes')
       .order('created_at', { ascending: false })
     if (orderFilter === 'active') query = query.is('archived_at', null)
     if (orderFilter === 'archived') query = query.not('archived_at', 'is', null)
@@ -405,7 +406,9 @@ export function OrdersTable() {
         <td>{order.payment_method.replaceAll('_', ' ')}{order.selected_payment_option_name && <><br />Bank selected: {order.selected_payment_option_name}</>}</td>
         <td>{Number(order.promo_discount) > 0 && <><strong>{order.promo_name || 'Launch Promo'}</strong><br />10% OFF · −₱{order.promo_discount}<br /></>}Shipping{order.shipping_tier ? ` — ${order.shipping_tier}` : ''} ₱{order.shipping_fee}<br />Amount due now ₱{order.upfront_amount}<br />Rider/showroom ₱{Number(order.rider_collectible_amount) || Number(order.showroom_payable_amount)}</td>
         <td>
-          <select value={order.payment_status} onChange={(event) => void update(order, 'payment_status', event.target.value)}><option value="pending_verification">Pending verification</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select>
+          {order.payment_method === 'layaway'
+            ? <><span className={styles.status}>Layaway {order.layaway_status?.replaceAll('_', ' ') || 'awaiting down payment'}</span><Link className={styles.tableAction} href={`/admin/order?orderId=${encodeURIComponent(order.id)}`}>Review Layaway Payments</Link></>
+            : <select value={order.payment_status} onChange={(event) => void update(order, 'payment_status', event.target.value)}><option value="pending_verification">Pending verification</option><option value="verified">Verified</option><option value="rejected">Rejected</option></select>}
           <select value={order.order_status} onChange={(event) => void update(order, 'order_status', event.target.value)}><option value="pending">Order Received</option>{order.order_status === 'reservation_pending' && <option value="reservation_pending">Reservation pending</option>}{order.order_status === 'confirmed' && <option value="confirmed">Confirmed</option>}<option value="preparing">Preparing</option><option value="packed">Packed</option><option value="shipped">Shipped</option>{order.delivery_method === 'same_day_delivery' && <option value="ready_for_rider">Ready for Rider</option>}<option value="completed">Completed</option><option value="cancelled">Cancelled</option></select>
           {order.delivery_method === 'same_day_delivery' && order.order_status !== 'ready_for_rider' && (order.payment_status === 'verified' ? <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" onClick={() => { if (window.confirm(`Mark ${order.order_reference} ready for rider pickup?`)) void update(order, 'order_status', 'ready_for_rider') }}>Mark Ready for Rider</button> : <span className={styles.placeholderText}>Verify payment before Ready for Rider</span>)}
           {order.delivery_method === 'same_day_delivery' && <button className={`${styles.tableAction} ${styles.retryNotificationAction}`} type="button" onClick={() => void copyReadyMessage(order)}>Copy Ready Message</button>}
